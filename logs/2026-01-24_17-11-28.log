@@ -1,0 +1,29 @@
+[2026-01-24 17:11:28.317] [warning] [Tracker] Large dt: 0.422s
+[2026-01-24 17:11:28.450] [warning] [Tracker] Large dt: 0.171s
+[2026-01-24 17:11:28.542] [warning] [Tracker] Large dt: 0.135s
+[2026-01-24 17:11:29.072] [debug] [Target] r=0.040, l=0.000
+[2026-01-24 17:11:29.072] [debug] [Tracker] Target diverged!
+[2026-01-24 17:11:29.562] [warning] [Tracker] Large dt: 0.128s
+[2026-01-24 17:11:29.767] [warning] [Tracker] Large dt: 0.118s
+[2026-01-24 17:11:29.960] [warning] [Tracker] Large dt: 0.101s
+[2026-01-24 17:11:30.157] [warning] [Tracker] Large dt: 0.113s
+[2026-01-24 17:11:30.401] [warning] [Tracker] Large dt: 0.123s
+[2026-01-24 17:11:30.513] [warning] [Tracker] Large dt: 0.124s
+[2026-01-24 17:11:30.743] [warning] [Tracker] Large dt: 0.127s
+[2026-01-24 17:11:30.833] [warning] [Tracker] Large dt: 0.105s
+[2026-01-24 17:11:31.025] [warning] [Tracker] Large dt: 0.105s
+[2026-01-24 17:11:31.393] [warning] [Tracker] Large dt: 0.111s
+[2026-01-24 17:11:31.598] [warning] [Tracker] Large dt: 0.111s
+[2026-01-24 17:11:33.276] [warning] [Tracker] Large dt: 0.112s
+[2026-01-24 17:11:36.179] [warning] [Tracker] Large dt: 0.104s
+[2026-01-24 17:11:38.518] [warning] [Tracker] Large dt: 0.108s
+[2026-01-24 17:11:38.624] [warning] [Tracker] Large dt: 0.107s
+[2026-01-24 17:11:38.714] [warning] [Tracker] Large dt: 0.102s
+[2026-01-24 17:11:41.804] [warning] [Tracker] Large dt: 0.104s
+[2026-01-24 17:11:42.603] [warning] [Tracker] Large dt: 0.105s
+[2026-01-24 17:11:44.744] [warning] [Tracker] Large dt: 0.104s
+[2026-01-24 17:11:45.039] [warning] [Tracker] Large dt: 0.107s
+[2026-01-24 17:11:45.247] [warning] [Tracker] Large dt: 0.108s
+[2026-01-24 17:11:46.391] [warning] [Tracker] Large dt: 0.112s
+[2026-01-24 17:11:49.876] [warning] [Tracker] Large dt: 0.101s
+[2026-01-24 17:11:50.674] [warning] [Tracker] Large dt: 0.144s

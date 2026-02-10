@@ -1,0 +1,237 @@
+[2026-01-24 17:00:37.624] [warning] [Tracker] Large dt: 0.442s
+[2026-01-24 17:00:37.721] [warning] [Tracker] Large dt: 0.161s
+[2026-01-24 17:00:37.904] [debug] [Target] r=0.098, l=-0.102
+[2026-01-24 17:00:37.904] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:38.140] [debug] [Target] r=0.058, l=-0.142
+[2026-01-24 17:00:38.141] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:38.382] [debug] [Target] r=0.087, l=-0.113
+[2026-01-24 17:00:38.383] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:38.563] [warning] [Tracker] Large dt: 0.110s
+[2026-01-24 17:00:38.741] [debug] [Target] r=0.100, l=-0.100
+[2026-01-24 17:00:38.741] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:38.948] [warning] [Tracker] Large dt: 0.109s
+[2026-01-24 17:00:39.039] [warning] [Tracker] Large dt: 0.103s
+[2026-01-24 17:00:39.253] [warning] [Tracker] Large dt: 0.114s
+[2026-01-24 17:00:39.449] [debug] [Target] r=0.099, l=-0.101
+[2026-01-24 17:00:39.449] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:39.621] [warning] [Tracker] Large dt: 0.100s
+[2026-01-24 17:00:39.720] [debug] [Target] r=0.121, l=-0.079
+[2026-01-24 17:00:39.720] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:39.995] [debug] [Target] r=0.072, l=-0.128
+[2026-01-24 17:00:39.995] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:40.292] [debug] [Target] r=0.056, l=-0.144
+[2026-01-24 17:00:40.292] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:40.579] [warning] [Tracker] Large dt: 0.109s
+[2026-01-24 17:00:40.688] [warning] [Tracker] Large dt: 0.108s
+[2026-01-24 17:00:40.779] [warning] [Tracker] Large dt: 0.111s
+[2026-01-24 17:00:41.007] [warning] [Tracker] Large dt: 0.111s
+[2026-01-24 17:00:41.096] [warning] [Tracker] Large dt: 0.117s
+[2026-01-24 17:00:41.340] [warning] [Tracker] Large dt: 0.127s
+[2026-01-24 17:00:41.462] [warning] [Tracker] Large dt: 0.121s
+[2026-01-24 17:00:41.556] [warning] [Tracker] Large dt: 0.120s
+[2026-01-24 17:00:41.683] [warning] [Tracker] Large dt: 0.104s
+[2026-01-24 17:00:41.825] [warning] [Tracker] Large dt: 0.122s
+[2026-01-24 17:00:41.920] [warning] [Tracker] Large dt: 0.135s
+[2026-01-24 17:00:42.160] [debug] [Target] r=0.063, l=-0.137
+[2026-01-24 17:00:42.165] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:42.445] [warning] [Tracker] Large dt: 0.103s
+[2026-01-24 17:00:42.633] [debug] [Target] r=0.104, l=-0.096
+[2026-01-24 17:00:42.633] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:42.923] [warning] [Tracker] Large dt: 0.103s
+[2026-01-24 17:00:43.007] [warning] [Tracker] Large dt: 0.104s
+[2026-01-24 17:00:43.204] [debug] [Target] r=0.052, l=-0.148
+[2026-01-24 17:00:43.206] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:43.466] [debug] [Target] r=0.048, l=-0.152
+[2026-01-24 17:00:43.467] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:43.720] [debug] [Target] r=0.109, l=-0.091
+[2026-01-24 17:00:43.720] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:43.986] [warning] [Tracker] Large dt: 0.104s
+[2026-01-24 17:00:44.406] [debug] [Target] r=0.114, l=-0.086
+[2026-01-24 17:00:44.407] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:44.660] [debug] [Target] r=0.056, l=-0.144
+[2026-01-24 17:00:44.661] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:45.007] [debug] [Target] r=0.089, l=-0.111
+[2026-01-24 17:00:45.008] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:46.267] [debug] [Target] r=0.107, l=-0.093
+[2026-01-24 17:00:46.267] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:46.432] [debug] [Target] r=0.109, l=-0.091
+[2026-01-24 17:00:46.433] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:46.589] [debug] [Target] r=0.109, l=-0.091
+[2026-01-24 17:00:46.590] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:46.770] [debug] [Target] r=0.109, l=-0.091
+[2026-01-24 17:00:46.770] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:46.935] [debug] [Target] r=0.109, l=-0.091
+[2026-01-24 17:00:46.935] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:47.104] [debug] [Target] r=0.106, l=-0.094
+[2026-01-24 17:00:47.105] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:47.267] [debug] [Target] r=0.110, l=-0.090
+[2026-01-24 17:00:47.267] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:47.444] [debug] [Target] r=0.110, l=-0.090
+[2026-01-24 17:00:47.444] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:47.604] [debug] [Target] r=0.108, l=-0.092
+[2026-01-24 17:00:47.604] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:47.769] [debug] [Target] r=0.104, l=-0.096
+[2026-01-24 17:00:47.769] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:47.927] [debug] [Target] r=0.100, l=-0.100
+[2026-01-24 17:00:47.927] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:48.112] [debug] [Target] r=0.099, l=-0.101
+[2026-01-24 17:00:48.113] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:48.251] [debug] [Target] r=0.101, l=-0.099
+[2026-01-24 17:00:48.251] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:48.394] [debug] [Target] r=0.106, l=-0.094
+[2026-01-24 17:00:48.394] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:48.549] [debug] [Target] r=0.110, l=-0.090
+[2026-01-24 17:00:48.549] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:48.758] [debug] [Target] r=0.118, l=-0.082
+[2026-01-24 17:00:48.758] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:49.179] [debug] [Target] r=0.105, l=-0.095
+[2026-01-24 17:00:49.179] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:49.344] [debug] [Target] r=0.115, l=-0.085
+[2026-01-24 17:00:49.345] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:51.170] [debug] [Target] r=0.118, l=-0.082
+[2026-01-24 17:00:51.172] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:51.344] [debug] [Target] r=0.117, l=-0.083
+[2026-01-24 17:00:51.344] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:51.534] [warning] [Tracker] Large dt: 0.106s
+[2026-01-24 17:00:51.610] [debug] [Target] r=0.115, l=-0.085
+[2026-01-24 17:00:51.611] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:51.761] [debug] [Target] r=0.111, l=-0.089
+[2026-01-24 17:00:51.762] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:51.918] [debug] [Target] r=0.114, l=-0.086
+[2026-01-24 17:00:51.918] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:52.061] [debug] [Target] r=0.116, l=-0.084
+[2026-01-24 17:00:52.061] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:52.214] [debug] [Target] r=0.118, l=-0.082
+[2026-01-24 17:00:52.214] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:52.362] [debug] [Target] r=0.123, l=-0.077
+[2026-01-24 17:00:52.362] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:52.517] [debug] [Target] r=0.123, l=-0.077
+[2026-01-24 17:00:52.518] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:52.714] [warning] [Tracker] Large dt: 0.109s
+[2026-01-24 17:00:52.877] [debug] [Target] r=0.107, l=-0.093
+[2026-01-24 17:00:52.877] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:53.040] [debug] [Target] r=0.123, l=-0.077
+[2026-01-24 17:00:53.040] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:53.207] [debug] [Target] r=0.116, l=-0.084
+[2026-01-24 17:00:53.208] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:53.387] [debug] [Target] r=0.121, l=-0.079
+[2026-01-24 17:00:53.391] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:53.563] [debug] [Target] r=0.117, l=-0.083
+[2026-01-24 17:00:53.564] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:53.740] [debug] [Target] r=0.121, l=-0.079
+[2026-01-24 17:00:53.741] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:53.918] [debug] [Target] r=0.122, l=-0.078
+[2026-01-24 17:00:53.919] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:54.068] [debug] [Target] r=0.119, l=-0.081
+[2026-01-24 17:00:54.070] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:54.227] [debug] [Target] r=0.112, l=-0.088
+[2026-01-24 17:00:54.227] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:54.382] [debug] [Target] r=0.119, l=-0.081
+[2026-01-24 17:00:54.383] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:54.540] [debug] [Target] r=0.109, l=-0.091
+[2026-01-24 17:00:54.546] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:54.718] [debug] [Target] r=0.111, l=-0.089
+[2026-01-24 17:00:54.718] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:54.874] [debug] [Target] r=0.114, l=-0.086
+[2026-01-24 17:00:54.874] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:55.019] [debug] [Target] r=0.111, l=-0.089
+[2026-01-24 17:00:55.019] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:55.158] [debug] [Target] r=0.113, l=-0.087
+[2026-01-24 17:00:55.159] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:55.307] [debug] [Target] r=0.113, l=-0.087
+[2026-01-24 17:00:55.307] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:55.486] [debug] [Target] r=0.113, l=-0.087
+[2026-01-24 17:00:55.486] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:55.649] [debug] [Target] r=0.112, l=-0.088
+[2026-01-24 17:00:55.649] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:55.820] [debug] [Target] r=0.114, l=-0.086
+[2026-01-24 17:00:55.820] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:55.992] [debug] [Target] r=0.116, l=-0.084
+[2026-01-24 17:00:55.992] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:56.138] [debug] [Target] r=0.110, l=-0.090
+[2026-01-24 17:00:56.139] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:56.295] [debug] [Target] r=0.108, l=-0.092
+[2026-01-24 17:00:56.295] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:57.095] [debug] [Target] r=0.109, l=-0.091
+[2026-01-24 17:00:57.095] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:57.247] [debug] [Target] r=0.108, l=-0.092
+[2026-01-24 17:00:57.248] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:57.402] [debug] [Target] r=0.109, l=-0.091
+[2026-01-24 17:00:57.402] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:57.578] [debug] [Target] r=0.107, l=-0.093
+[2026-01-24 17:00:57.578] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:57.730] [debug] [Target] r=0.110, l=-0.090
+[2026-01-24 17:00:57.730] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:57.967] [debug] [Target] r=0.111, l=-0.089
+[2026-01-24 17:00:57.967] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:58.156] [debug] [Target] r=0.117, l=-0.083
+[2026-01-24 17:00:58.157] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:58.336] [debug] [Target] r=0.110, l=-0.090
+[2026-01-24 17:00:58.338] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:58.712] [debug] [Target] r=0.108, l=-0.092
+[2026-01-24 17:00:58.712] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:59.301] [debug] [Target] r=0.107, l=-0.093
+[2026-01-24 17:00:59.301] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:59.448] [debug] [Target] r=0.104, l=-0.096
+[2026-01-24 17:00:59.450] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:59.604] [debug] [Target] r=0.109, l=-0.091
+[2026-01-24 17:00:59.604] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:59.762] [debug] [Target] r=0.106, l=-0.094
+[2026-01-24 17:00:59.763] [debug] [Tracker] Target diverged!
+[2026-01-24 17:00:59.905] [debug] [Target] r=0.107, l=-0.093
+[2026-01-24 17:00:59.906] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:00.075] [debug] [Target] r=0.108, l=-0.092
+[2026-01-24 17:01:00.075] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:00.225] [debug] [Target] r=0.107, l=-0.093
+[2026-01-24 17:01:00.226] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:00.387] [debug] [Target] r=0.108, l=-0.092
+[2026-01-24 17:01:00.390] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:00.608] [warning] [Tracker] Large dt: 0.119s
+[2026-01-24 17:01:00.696] [warning] [Tracker] Large dt: 0.102s
+[2026-01-24 17:01:00.769] [debug] [Target] r=0.116, l=-0.084
+[2026-01-24 17:01:00.769] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:00.937] [debug] [Target] r=0.113, l=-0.087
+[2026-01-24 17:01:00.937] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:01.099] [debug] [Target] r=0.101, l=-0.099
+[2026-01-24 17:01:01.099] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:01.242] [debug] [Target] r=0.108, l=-0.092
+[2026-01-24 17:01:01.242] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:01.408] [debug] [Target] r=0.107, l=-0.093
+[2026-01-24 17:01:01.408] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:01.577] [debug] [Target] r=0.112, l=-0.088
+[2026-01-24 17:01:01.578] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:01.730] [debug] [Target] r=0.108, l=-0.092
+[2026-01-24 17:01:01.730] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:01.885] [debug] [Target] r=0.107, l=-0.093
+[2026-01-24 17:01:01.887] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:02.040] [debug] [Target] r=0.111, l=-0.089
+[2026-01-24 17:01:02.040] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:02.206] [debug] [Target] r=0.105, l=-0.095
+[2026-01-24 17:01:02.207] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:02.380] [debug] [Target] r=0.102, l=-0.098
+[2026-01-24 17:01:02.381] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:02.558] [debug] [Target] r=0.099, l=-0.101
+[2026-01-24 17:01:02.559] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:02.838] [warning] [Tracker] Large dt: 0.130s
+[2026-01-24 17:01:03.448] [warning] [Tracker] Large dt: 0.398s
+[2026-01-24 17:01:03.539] [debug] [Target] r=0.112, l=-0.088
+[2026-01-24 17:01:03.539] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:03.702] [debug] [Target] r=0.117, l=-0.083
+[2026-01-24 17:01:03.703] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:03.881] [debug] [Target] r=0.111, l=-0.089
+[2026-01-24 17:01:03.881] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:04.047] [debug] [Target] r=0.103, l=-0.097
+[2026-01-24 17:01:04.047] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:04.194] [debug] [Target] r=0.103, l=-0.097
+[2026-01-24 17:01:04.194] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:04.359] [debug] [Target] r=0.102, l=-0.098
+[2026-01-24 17:01:04.359] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:04.530] [debug] [Target] r=0.104, l=-0.096
+[2026-01-24 17:01:04.530] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:04.721] [warning] [Tracker] Large dt: 0.104s
+[2026-01-24 17:01:05.661] [debug] [Target] r=0.108, l=-0.092
+[2026-01-24 17:01:05.662] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:05.811] [debug] [Target] r=0.108, l=-0.092
+[2026-01-24 17:01:05.811] [debug] [Tracker] Target diverged!
+[2026-01-24 17:01:05.950] [debug] [Target] r=0.109, l=-0.091
+[2026-01-24 17:01:05.950] [debug] [Tracker] Target diverged!
