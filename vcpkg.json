@@ -2,6 +2,8 @@
     "name": "EX_MiracleVision",
     "version": "0.1.0",
     "dependencies": [
-        "fmt"
+        "fmt",
+        "spdlog",
+        "opencv4"
     ]
 }
