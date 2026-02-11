@@ -62,42 +62,80 @@ message(STATUS "配置 test 目录...")
 #     message(STATUS "     请确认 SDK 已正确安装")
 # endif()
 
+# ============================================================================
+# Test 测试程序目录
+# ============================================================================
+
+message(STATUS "  Configuring test programs...")
+
 # ============================================
-# 2. Minimum Vision 测试程序
+# Minimum Vision 测试程序
 # ============================================
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/minimum_vision.cpp")
-    message(STATUS "  ✅ 配置 minimum_vision")
+    message(STATUS "    Configuring minimum_vision...")
     
     add_executable(minimum_vision
         minimum_vision.cpp
     )
     
     target_include_directories(minimum_vision PRIVATE
+        ${CMAKE_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/base
         ${CMAKE_SOURCE_DIR}/module
         ${CMAKE_SOURCE_DIR}/devices
         ${CMAKE_SOURCE_DIR}/utils
-        ${OpenCV_INCLUDE_DIRS}
     )
     
     target_link_libraries(minimum_vision PRIVATE
+        # 工具库
         mv-img-tools
         mv-plotter
+        
+        # 算法模块
         mv-basic-armor
-        mv-uart-serial
         mv-predictor
-        mv-foxglove-publisher
-        foxglove_sdk
+        
+        # 设备层
+        mv-uart-serial
+        
+        # vcpkg 依赖
         fmt::fmt
-        ${OpenCV_LIBS}
         nlohmann_json::nlohmann_json
+        
+        # OpenCV
+        opencv_core
+        opencv_imgproc
+        opencv_highgui
+        opencv_videoio
+        
+        # 文件系统库
         stdc++fs
     )
     
+    # 如果启用了 Foxglove
+    if(TARGET mv-foxglove-publisher)
+        target_link_libraries(minimum_vision PRIVATE 
+            mv-foxglove-publisher
+            foxglove_sdk
+        )
+    endif()
+    
     target_compile_definitions(minimum_vision PRIVATE
         SOURCE_PATH="${CMAKE_SOURCE_DIR}"
-        CONFIG_FILE_PATH="${CMAKE_SOURCE_DIR}/configs"
+        CONFIG_FILE_PATH="${CONFIG_FILE_PATH}"
+    )
+    
+    set_target_properties(minimum_vision PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON
+    )
+    
+    message(STATUS "      ✓ minimum_vision configured")
+else()
+    message(STATUS "      ⊗ minimum_vision.cpp not found")
+endif()
     )
     
     set_target_properties(minimum_vision PROPERTIES
