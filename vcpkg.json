@@ -1,9 +1,24 @@
 {
-    "name": "EX_MiracleVision",
-    "version": "0.1.0",
-    "dependencies": [
-        "fmt",
-        "spdlog",
-        "opencv4"
-    ]
+  "name": "ex-miraclevision",
+  "version": "0.1.0",
+  "dependencies": [
+    "fmt",
+    "spdlog",
+    {
+      "name": "opencv4",
+      "features": [
+        "ffmpeg", 
+        "dnn",
+        "jpeg",
+        "png",
+        "contrib", 
+        "tbb",
+        "eigen"
+      ]
+    },
+    "eigen3",
+    "yaml-cpp",
+    "nlohmann-json",
+    "tbb"
+  ]
 }
