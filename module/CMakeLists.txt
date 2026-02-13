@@ -18,6 +18,7 @@ target_link_libraries(mv-basic-pnp
 )
 target_include_directories(mv-basic-pnp PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/angle_solve>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
 )
 
 add_library(mv-angle-solve SHARED angle_solve/angle_solve.cpp)
@@ -29,6 +30,7 @@ target_link_libraries(mv-angle-solve
 )
 target_include_directories(mv-angle-solve PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/angle_solve>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
 )
 
 # ----------------------------------------------------------------------------
@@ -44,6 +46,7 @@ target_link_libraries(mv-basic-armor
 )
 target_include_directories(mv-basic-armor PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/armor>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
 )
 
 add_library(mv-fan-armor SHARED armor/fan_armor.cpp)
@@ -55,6 +58,7 @@ target_link_libraries(mv-fan-armor
 )
 target_include_directories(mv-fan-armor PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/armor>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
 )
 
 add_library(mv-dnn-armor SHARED armor/DNN_armor.cpp)
@@ -67,6 +71,7 @@ target_link_libraries(mv-dnn-armor
 )
 target_include_directories(mv-dnn-armor PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/armor>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
 )
 
 # ----------------------------------------------------------------------------
@@ -81,6 +86,7 @@ target_link_libraries(mv-new-buff
 )
 target_include_directories(mv-new-buff PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/buff>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
 )
 
 add_library(mv-basic-buff SHARED buff/basic_buff.cpp)
@@ -95,6 +101,7 @@ target_link_libraries(mv-basic-buff
 )
 target_include_directories(mv-basic-buff PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/buff>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
 )
 
 # ----------------------------------------------------------------------------
@@ -108,6 +115,7 @@ target_link_libraries(mv-basic-kalman
 )
 target_include_directories(mv-basic-kalman PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/filter>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
 )
 
 # ----------------------------------------------------------------------------
@@ -122,6 +130,7 @@ target_link_libraries(mv-onnx-inferring
 )
 target_include_directories(mv-onnx-inferring PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/ml>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
 )
 
 # 如果启用了 ONNX Runtime
@@ -142,6 +151,7 @@ target_link_libraries(mv-basic-roi
 )
 target_include_directories(mv-basic-roi PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/roi>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
 )
 
 # ----------------------------------------------------------------------------
@@ -158,6 +168,7 @@ target_link_libraries(mv-camera-calibration
 )
 target_include_directories(mv-camera-calibration PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/camera>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
 )
 
 # ----------------------------------------------------------------------------
@@ -184,6 +195,7 @@ target_link_libraries(mv-predictor
 target_include_directories(mv-predictor PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/predictor>
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/utils>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
 )
 
 # ----------------------------------------------------------------------------

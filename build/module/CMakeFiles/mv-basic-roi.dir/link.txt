@@ -1,0 +1,1 @@
+/usr/bin/g++-11 -fPIC -O3 -shared -Wl,-soname,libmv-basic-roi.so -o libmv-basic-roi.so CMakeFiles/mv-basic-roi.dir/roi/basic_roi.cpp.o  -Wl,-rpath,/home/prototype152/EX_MiracleVision/3rdparty/foxglove/lib:/usr/local/lib /usr/local/lib/libopencv_imgproc.so.4.5.5 /usr/lib/x86_64-linux-gnu/libfmt.so.8.1.1 /usr/local/lib/libopencv_core.so.4.5.5 -Wl,--as-needed 

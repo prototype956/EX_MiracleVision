@@ -1,0 +1,1 @@
+/usr/bin/g++-11 -fPIC -O3 -shared -Wl,-soname,libmv-uart-serial.so -o libmv-uart-serial.so CMakeFiles/mv-uart-serial.dir/serial/uart_serial.cpp.o  -Wl,-rpath,/home/prototype152/EX_MiracleVision/3rdparty/foxglove/lib:/usr/local/lib /usr/lib/x86_64-linux-gnu/libfmt.so.8.1.1 /usr/local/lib/libopencv_core.so.4.5.5 -Wl,--as-needed 

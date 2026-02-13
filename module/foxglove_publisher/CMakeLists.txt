@@ -20,12 +20,12 @@ target_include_directories(mv-foxglove-publisher PUBLIC
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/devices>
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/utils>
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/base>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/3rdparty/foxglove/include>
 )
 
 # 链接依赖
 target_link_libraries(mv-foxglove-publisher
     PUBLIC
-    foxglove_sdk
     mv-base64
     opencv_core
     Eigen3::Eigen

@@ -1,8 +1,0 @@
-Package: eigen3
-Version: 5.0.1
-Depends: vcpkg-cmake:x64-linux, vcpkg-cmake-config:x64-linux
-Architecture: x64-linux-dynamic
-Multi-Arch: same
-Abi: 2c44f01c8dcd012a71c90552a5e036702e066a03e0012815eebddd38b8101747
-Description: C++ template library for linear algebra: matrices, vectors, numerical solvers, and related algorithms.
-Status: install ok installed

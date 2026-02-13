@@ -108,6 +108,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/minimum_vision.cpp")
         opencv_imgproc
         opencv_highgui
         opencv_videoio
+        opencv_calib3d
         
         # 文件系统库
         stdc++fs
@@ -115,10 +116,16 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/minimum_vision.cpp")
     
     # 如果启用了 Foxglove
     if(TARGET mv-foxglove-publisher)
-        target_link_libraries(minimum_vision PRIVATE 
-            mv-foxglove-publisher
-            foxglove_sdk
-        )
+        set(FOXGLOVE_LIB_PATH "${CMAKE_SOURCE_DIR}/3rdparty/foxglove/lib/libfoxglove.so")
+        if(EXISTS ${FOXGLOVE_LIB_PATH})
+            target_link_libraries(minimum_vision PRIVATE 
+                mv-foxglove-publisher
+                ${FOXGLOVE_LIB_PATH}
+            )
+            message(STATUS "      ! Linked Foxglove SDK to minimum_vision")
+        else()
+            target_link_libraries(minimum_vision PRIVATE mv-foxglove-publisher)
+        endif()
     endif()
     
     target_compile_definitions(minimum_vision PRIVATE
@@ -132,17 +139,15 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/minimum_vision.cpp")
         CXX_STANDARD_REQUIRED ON
     )
     
+    # GCC 11 在 Release 模式下编译此文件时会出现 ICE，需要降低优化级别
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_BUILD_TYPE STREQUAL "Release")
+        target_compile_options(minimum_vision PRIVATE -O1)
+        message(STATUS "      ! Applied -O1 optimization for minimum_vision (GCC ICE workaround)")
+    endif()
+    
     message(STATUS "      ✓ minimum_vision configured")
 else()
     message(STATUS "      ⊗ minimum_vision.cpp not found")
-endif()
-    )
-    
-    set_target_properties(minimum_vision PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-        CXX_STANDARD 17
-        CXX_STANDARD_REQUIRED ON
-    )
 endif()
 
 # ============================================
