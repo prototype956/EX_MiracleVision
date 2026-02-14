@@ -65,7 +65,7 @@ int main(int argc, char **argv)
     fmt::print("[MinimumVision] Built on g++ version: {}\n", __VERSION__);
 
     // 视频文件夹路径（写死）
-    std::string video_folder = "/home/prototype152/桌面/EX_MiracleVision/video";
+    std::string video_folder = "/home/prototype152/EX_MiracleVision/video";
     
     // 如果提供了命令行参数，则使用命令行参数
     if (argc > 1)
