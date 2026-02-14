@@ -355,15 +355,6 @@ cat build/CMakeFiles/CMakeOutput.log | grep -A5 "Error"
 ---
 
 ## 📝 环境管理总结
-
-### 虚拟机环境说明
-
-本项目在以下环境中开发和测试：
-
-- **操作系统**: Ubuntu 22.04.3 LTS (在虚拟机中运行)
-- **虚拟化**: VMware Workstation / VirtualBox
-- **宿主系统**: Windows 10/11 或 Linux
-
 ### Conda 环境说明
 
 - **Conda**: 用于运行其他队伍的项目，与本项目无关
