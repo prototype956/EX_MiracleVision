@@ -1,24 +1,26 @@
 #include "math_tools.hpp"
 
 #include <cmath>
+
 #include <opencv2/core.hpp>  // CV_PI
 
-namespace tools
-{
-double limit_rad(double angle)
-{
-  while (angle > CV_PI) angle -= 2 * CV_PI;
-  while (angle <= -CV_PI) angle += 2 * CV_PI;
+namespace tools {
+double limit_rad(double angle) {
+  while (angle > CV_PI)
+    angle -= 2 * CV_PI;
+  while (angle <= -CV_PI)
+    angle += 2 * CV_PI;
   return angle;
 }
 
-Eigen::Vector3d eulers(Eigen::Quaterniond q, int axis0, int axis1, int axis2, bool extrinsic)
-{
-  if (!extrinsic) std::swap(axis0, axis2);
+Eigen::Vector3d eulers(Eigen::Quaterniond q, int axis0, int axis1, int axis2, bool extrinsic) {
+  if (!extrinsic)
+    std::swap(axis0, axis2);
 
   auto i = axis0, j = axis1, k = axis2;
   auto is_proper = (i == k);
-  if (is_proper) k = 3 - i - j;
+  if (is_proper)
+    k = 3 - i - j;
   auto sign = (i - j) * (j - k) * (k - i) / 2;
 
   double a, b, c, d;
@@ -52,35 +54,39 @@ Eigen::Vector3d eulers(Eigen::Quaterniond q, int axis0, int axis1, int axis2, bo
   } else {
     if (!extrinsic) {
       eulers[0] = 0;
-      if (!safe1) eulers[2] = 2 * half_sum;
-      if (!safe2) eulers[2] = -2 * half_diff;
+      if (!safe1)
+        eulers[2] = 2 * half_sum;
+      if (!safe2)
+        eulers[2] = -2 * half_diff;
     } else {
       eulers[2] = 0;
-      if (!safe1) eulers[0] = 2 * half_sum;
-      if (!safe2) eulers[0] = 2 * half_diff;
+      if (!safe1)
+        eulers[0] = 2 * half_sum;
+      if (!safe2)
+        eulers[0] = 2 * half_diff;
     }
   }
 
-  for (int i = 0; i < 3; i++) eulers[i] = limit_rad(eulers[i]);
+  for (int i = 0; i < 3; i++)
+    eulers[i] = limit_rad(eulers[i]);
 
   if (!is_proper) {
     eulers[2] *= sign;
     eulers[1] -= CV_PI / 2;
   }
 
-  if (!extrinsic) std::swap(eulers[0], eulers[2]);
+  if (!extrinsic)
+    std::swap(eulers[0], eulers[2]);
 
   return eulers;
 }
 
-Eigen::Vector3d eulers(Eigen::Matrix3d R, int axis0, int axis1, int axis2, bool extrinsic)
-{
+Eigen::Vector3d eulers(Eigen::Matrix3d R, int axis0, int axis1, int axis2, bool extrinsic) {
   Eigen::Quaterniond q(R);
   return eulers(q, axis0, axis1, axis2, extrinsic);
 }
 
-Eigen::Matrix3d rotation_matrix(const Eigen::Vector3d & ypr)
-{
+Eigen::Matrix3d rotation_matrix(const Eigen::Vector3d& ypr) {
   double roll = ypr[2];
   double pitch = ypr[1];
   double yaw = ypr[0];
@@ -100,8 +106,7 @@ Eigen::Matrix3d rotation_matrix(const Eigen::Vector3d & ypr)
   return R;
 }
 
-Eigen::Vector3d xyz2ypd(const Eigen::Vector3d & xyz)
-{
+Eigen::Vector3d xyz2ypd(const Eigen::Vector3d& xyz) {
   auto x = xyz[0], y = xyz[1], z = xyz[2];
   auto yaw = std::atan2(y, x);
   auto pitch = std::atan2(z, std::sqrt(x * x + y * y));
@@ -109,8 +114,7 @@ Eigen::Vector3d xyz2ypd(const Eigen::Vector3d & xyz)
   return {yaw, pitch, distance};
 }
 
-Eigen::MatrixXd xyz2ypd_jacobian(const Eigen::Vector3d & xyz)
-{
+Eigen::MatrixXd xyz2ypd_jacobian(const Eigen::Vector3d& xyz) {
   auto x = xyz[0], y = xyz[1], z = xyz[2];
 
   auto dyaw_dx = -y / (x * x + y * y);
@@ -136,8 +140,7 @@ Eigen::MatrixXd xyz2ypd_jacobian(const Eigen::Vector3d & xyz)
   return J;
 }
 
-Eigen::Vector3d ypd2xyz(const Eigen::Vector3d & ypd)
-{
+Eigen::Vector3d ypd2xyz(const Eigen::Vector3d& ypd) {
   auto yaw = ypd[0], pitch = ypd[1], distance = ypd[2];
   auto x = distance * std::cos(pitch) * std::cos(yaw);
   auto y = distance * std::cos(pitch) * std::sin(yaw);
@@ -145,8 +148,7 @@ Eigen::Vector3d ypd2xyz(const Eigen::Vector3d & ypd)
   return {x, y, z};
 }
 
-Eigen::MatrixXd ypd2xyz_jacobian(const Eigen::Vector3d & ypd)
-{
+Eigen::MatrixXd ypd2xyz_jacobian(const Eigen::Vector3d& ypd) {
   auto yaw = ypd[0], pitch = ypd[1], distance = ypd[2];
   double cos_yaw = std::cos(yaw);
   double sin_yaw = std::sin(yaw);
@@ -176,23 +178,20 @@ Eigen::MatrixXd ypd2xyz_jacobian(const Eigen::Vector3d & ypd)
   return J;
 }
 
-double delta_time(
-  const std::chrono::steady_clock::time_point & a, const std::chrono::steady_clock::time_point & b)
-{
+double delta_time(const std::chrono::steady_clock::time_point& a,
+                  const std::chrono::steady_clock::time_point& b) {
   std::chrono::duration<double> c = a - b;
   return c.count();
 }
 
-double get_abs_angle(const Eigen::Vector2d & vec1, const Eigen::Vector2d & vec2)
-{
+double get_abs_angle(const Eigen::Vector2d& vec1, const Eigen::Vector2d& vec2) {
   if (vec1.norm() == 0. || vec2.norm() == 0.) {
     return 0.;
   }
   return std::acos(vec1.dot(vec2) / (vec1.norm() * vec2.norm()));
 }
 
-double limit_min_max(double input, double min, double max)
-{
+double limit_min_max(double input, double min, double max) {
   if (input > max)
     return max;
   else if (input < min)

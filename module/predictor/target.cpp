@@ -1,30 +1,27 @@
 #include "target.hpp"
 
-#include <numeric>
-
 #include "utils/logger.hpp"
 #include "utils/math_tools.hpp"
 
-namespace predictor
-{
-Target::Target(
-  const Armor & armor, std::chrono::steady_clock::time_point t, double radius, int armor_num,
-  Eigen::VectorXd P0_dig)
-: name(armor.name),
-  armor_type(armor.type),
-  jumped(false),
-  last_id(0),
-  update_count_(0),
-  armor_num_(armor_num),
-  t_(t),
-  is_switch_(false),
-  is_converged_(false),
-  switch_count_(0)
-{
+#include <numeric>
+
+namespace predictor {
+Target::Target(const Armor& armor, std::chrono::steady_clock::time_point t, double radius,
+               int armor_num, Eigen::VectorXd P0_dig)
+    : name(armor.name),
+      armor_type(armor.type),
+      jumped(false),
+      last_id(0),
+      update_count_(0),
+      armor_num_(armor_num),
+      t_(t),
+      is_switch_(false),
+      is_converged_(false),
+      switch_count_(0) {
   auto r = radius;
   priority = armor.priority;
-  const Eigen::VectorXd & xyz = armor.xyz_in_world;
-  const Eigen::VectorXd & ypr = armor.ypr_in_world;
+  const Eigen::VectorXd& xyz = armor.xyz_in_world;
+  const Eigen::VectorXd& ypr = armor.ypr_in_world;
 
   // 旋转中心的坐标
   auto center_x = xyz[0] + r * std::cos(ypr[0]);
@@ -40,7 +37,7 @@ Target::Target(
   Eigen::MatrixXd P0 = P0_dig.asDiagonal();
 
   // 防止夹角求和出现异常值
-  auto x_add = [](const Eigen::VectorXd & a, const Eigen::VectorXd & b) -> Eigen::VectorXd {
+  auto x_add = [](const Eigen::VectorXd& a, const Eigen::VectorXd& b) -> Eigen::VectorXd {
     Eigen::VectorXd c = a + b;
     c[6] = tools::limit_rad(c[6]);
     return c;
@@ -49,14 +46,13 @@ Target::Target(
   ekf_ = tools::ExtendedKalmanFilter(x0, P0, x_add);  //初始化滤波器（预测量、预测量协方差）
 }
 
-Target::Target(double x, double vyaw, double radius, double h) : armor_num_(4)
-{
+Target::Target(double x, double vyaw, double radius, double h) : armor_num_(4) {
   Eigen::VectorXd x0{{x, 0, 0, 0, 0, 0, 0, vyaw, radius, 0, h}};
   Eigen::VectorXd P0_dig{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
   Eigen::MatrixXd P0 = P0_dig.asDiagonal();
 
   // 防止夹角求和出现异常值
-  auto x_add = [](const Eigen::VectorXd & a, const Eigen::VectorXd & b) -> Eigen::VectorXd {
+  auto x_add = [](const Eigen::VectorXd& a, const Eigen::VectorXd& b) -> Eigen::VectorXd {
     Eigen::VectorXd c = a + b;
     c[6] = tools::limit_rad(c[6]);
     return c;
@@ -65,15 +61,13 @@ Target::Target(double x, double vyaw, double radius, double h) : armor_num_(4)
   ekf_ = tools::ExtendedKalmanFilter(x0, P0, x_add);  //初始化滤波器（预测量、预测量协方差）
 }
 
-void Target::predict(std::chrono::steady_clock::time_point t)
-{
+void Target::predict(std::chrono::steady_clock::time_point t) {
   auto dt = tools::delta_time(t, t_);
   predict(dt);
   t_ = t;
 }
 
-void Target::predict(double dt)
-{
+void Target::predict(double dt) {
   // 状态转移矩阵
   // clang-format off
   Eigen::MatrixXd F{
@@ -122,7 +116,7 @@ void Target::predict(double dt)
   // clang-format on
 
   // 防止夹角求和出现异常值
-  auto f = [&](const Eigen::VectorXd & x) -> Eigen::VectorXd {
+  auto f = [&](const Eigen::VectorXd& x) -> Eigen::VectorXd {
     Eigen::VectorXd x_prior = F * x;
     x_prior[6] = tools::limit_rad(x_prior[6]);
     return x_prior;
@@ -135,29 +129,27 @@ void Target::predict(double dt)
   ekf_.predict(F, Q, f);
 }
 
-void Target::update(const Armor & armor)
-{
+void Target::update(const Armor& armor) {
   // 装甲板匹配
   int id;
   auto min_angle_error = 1e10;
-  const std::vector<Eigen::Vector4d> & xyza_list = armor_xyza_list();
+  const std::vector<Eigen::Vector4d>& xyza_list = armor_xyza_list();
 
   std::vector<std::pair<Eigen::Vector4d, int>> xyza_i_list;
   for (int i = 0; i < armor_num_; i++) {
     xyza_i_list.push_back({xyza_list[i], i});
   }
 
-  std::sort(
-    xyza_i_list.begin(), xyza_i_list.end(),
-    [](const std::pair<Eigen::Vector4d, int> & a, const std::pair<Eigen::Vector4d, int> & b) {
-      Eigen::Vector3d ypd1 = tools::xyz2ypd(a.first.head(3));
-      Eigen::Vector3d ypd2 = tools::xyz2ypd(b.first.head(3));
-      return ypd1[2] < ypd2[2];
-    });
+  std::sort(xyza_i_list.begin(), xyza_i_list.end(),
+            [](const std::pair<Eigen::Vector4d, int>& a, const std::pair<Eigen::Vector4d, int>& b) {
+              Eigen::Vector3d ypd1 = tools::xyz2ypd(a.first.head(3));
+              Eigen::Vector3d ypd2 = tools::xyz2ypd(b.first.head(3));
+              return ypd1[2] < ypd2[2];
+            });
 
   // 取前3个distance最小的装甲板
-  for (int i = 0; i < 3; i++) { 
-    const auto & xyza = xyza_i_list[i].first;
+  for (int i = 0; i < 3; i++) {
+    const auto& xyza = xyza_i_list[i].first;
     Eigen::Vector3d ypd = tools::xyz2ypd(xyza.head(3));
     auto angle_error = std::abs(tools::limit_rad(armor.ypr_in_world[0] - xyza[3])) +
                        std::abs(tools::limit_rad(armor.ypd_in_world[0] - ypd[0]));
@@ -168,7 +160,8 @@ void Target::update(const Armor & armor)
     }
   }
 
-  if (id != 0) jumped = true;
+  if (id != 0)
+    jumped = true;
 
   if (id != last_id) {
     is_switch_ = true;
@@ -176,7 +169,8 @@ void Target::update(const Armor & armor)
     is_switch_ = false;
   }
 
-  if (is_switch_) switch_count_++;
+  if (is_switch_)
+    switch_count_++;
 
   last_id = id;
   update_count_++;
@@ -184,22 +178,20 @@ void Target::update(const Armor & armor)
   update_ypda(armor, id);
 }
 
-void Target::update_ypda(const Armor & armor, int id)
-{
+void Target::update_ypda(const Armor& armor, int id) {
   //观测jacobi
   Eigen::MatrixXd H = h_jacobian(ekf_.x, id);
   // Eigen::VectorXd R_dig{{4e-3, 4e-3, 1, 9e-2}};
   auto center_yaw = std::atan2(armor.xyz_in_world[1], armor.xyz_in_world[0]);
   auto delta_angle = tools::limit_rad(armor.ypr_in_world[0] - center_yaw);
-  Eigen::VectorXd R_dig{
-    {4e-3, 4e-3, log(std::abs(delta_angle) + 1) + 1,
-     log(std::abs(armor.ypd_in_world[2]) + 1) / 200 + 9e-2}};
+  Eigen::VectorXd R_dig{{4e-3, 4e-3, log(std::abs(delta_angle) + 1) + 1,
+                         log(std::abs(armor.ypd_in_world[2]) + 1) / 200 + 9e-2}};
 
   //测量过程噪声偏差的方差
   Eigen::MatrixXd R = R_dig.asDiagonal();
 
   // 定义非线性转换函数h: x -> z
-  auto h = [&](const Eigen::VectorXd & x) -> Eigen::Vector4d {
+  auto h = [&](const Eigen::VectorXd& x) -> Eigen::Vector4d {
     Eigen::VectorXd xyz = h_armor_xyz(x, id);
     Eigen::VectorXd ypd = tools::xyz2ypd(xyz);
     auto angle = tools::limit_rad(x[6] + id * 2 * CV_PI / armor_num_);
@@ -207,7 +199,7 @@ void Target::update_ypda(const Armor & armor, int id)
   };
 
   // 防止夹角求差出现异常值
-  auto z_subtract = [](const Eigen::VectorXd & a, const Eigen::VectorXd & b) -> Eigen::VectorXd {
+  auto z_subtract = [](const Eigen::VectorXd& a, const Eigen::VectorXd& b) -> Eigen::VectorXd {
     Eigen::VectorXd c = a - b;
     c[0] = tools::limit_rad(c[0]);
     c[1] = tools::limit_rad(c[1]);
@@ -215,19 +207,22 @@ void Target::update_ypda(const Armor & armor, int id)
     return c;
   };
 
-  const Eigen::VectorXd & ypd = armor.ypd_in_world;
-  const Eigen::VectorXd & ypr = armor.ypr_in_world;
+  const Eigen::VectorXd& ypd = armor.ypd_in_world;
+  const Eigen::VectorXd& ypr = armor.ypr_in_world;
   Eigen::VectorXd z{{ypd[0], ypd[1], ypd[2], ypr[0]}};  //获得观测量
 
   ekf_.update(z, H, R, h, z_subtract);
 }
 
-Eigen::VectorXd Target::ekf_x() const { return ekf_.x; }
+Eigen::VectorXd Target::ekf_x() const {
+  return ekf_.x;
+}
 
-const tools::ExtendedKalmanFilter & Target::ekf() const { return ekf_; }
+const tools::ExtendedKalmanFilter& Target::ekf() const {
+  return ekf_;
+}
 
-std::vector<Eigen::Vector4d> Target::armor_xyza_list() const
-{
+std::vector<Eigen::Vector4d> Target::armor_xyza_list() const {
   std::vector<Eigen::Vector4d> _armor_xyza_list;
 
   for (int i = 0; i < armor_num_; i++) {
@@ -238,19 +233,18 @@ std::vector<Eigen::Vector4d> Target::armor_xyza_list() const
   return _armor_xyza_list;
 }
 
-bool Target::diverged() const
-{
+bool Target::diverged() const {
   auto r_ok = ekf_.x[8] > 0.05 && ekf_.x[8] < 0.5;
   auto l_ok = ekf_.x[8] + ekf_.x[9] > 0.05 && ekf_.x[8] + ekf_.x[9] < 0.5;
 
-  if (r_ok && l_ok) return false;
+  if (r_ok && l_ok)
+    return false;
 
   tools::logger()->debug("[Target] r={:.3f}, l={:.3f}", ekf_.x[8], ekf_.x[9]);
   return true;
 }
 
-bool Target::convergened()
-{
+bool Target::convergened() {
   if (this->name != ArmorName::outpost && update_count_ > 3 && !this->diverged()) {
     is_converged_ = true;
   }
@@ -264,8 +258,7 @@ bool Target::convergened()
 }
 
 // 计算出装甲板中心的坐标（考虑长短轴）
-Eigen::Vector3d Target::h_armor_xyz(const Eigen::VectorXd & x, int id) const
-{
+Eigen::Vector3d Target::h_armor_xyz(const Eigen::VectorXd& x, int id) const {
   auto angle = tools::limit_rad(x[6] + id * 2 * CV_PI / armor_num_);
   auto use_l_h = (armor_num_ == 4) && (id == 1 || id == 3);
 
@@ -277,8 +270,7 @@ Eigen::Vector3d Target::h_armor_xyz(const Eigen::VectorXd & x, int id) const
   return {armor_x, armor_y, armor_z};
 }
 
-Eigen::MatrixXd Target::h_jacobian(const Eigen::VectorXd & x, int id) const
-{
+Eigen::MatrixXd Target::h_jacobian(const Eigen::VectorXd& x, int id) const {
   auto angle = tools::limit_rad(x[6] + id * 2 * CV_PI / armor_num_);
   auto use_l_h = (armor_num_ == 4) && (id == 1 || id == 3);
 
@@ -316,6 +308,8 @@ Eigen::MatrixXd Target::h_jacobian(const Eigen::VectorXd & x, int id) const
   return H_armor_ypda * H_armor_xyza;
 }
 
-bool Target::checkinit() { return isinit; }
+bool Target::checkinit() {
+  return isinit;
+}
 
-}  // namespace auto_aim
+}  // namespace predictor

@@ -42,7 +42,7 @@ target_include_directories(mv-plotter PUBLIC
 # ----------------------------------------------------------------------------
 add_library(mv-logger OBJECT logger.cpp)
 
-target_link_libraries(mv-logger PUBLIC 
+target_link_libraries(mv-logger PUBLIC
     spdlog::spdlog
     fmt::fmt
 )
@@ -59,7 +59,7 @@ set_target_properties(mv-logger PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # ----------------------------------------------------------------------------
 add_library(mv-math-tools OBJECT math_tools.cpp)
 
-target_link_libraries(mv-math-tools PUBLIC 
+target_link_libraries(mv-math-tools PUBLIC
     opencv_core
     Eigen3::Eigen
 )

@@ -6,23 +6,25 @@
 #include <vector>
 
 #include <fcntl.h>
+#include <fmt/color.h>
 #include <linux/usbdevice_fs.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-#include <fmt/color.h>
-
 namespace utils {
 
 inline bool resetMVCamera() {
-  static const auto identifier_green = fmt::format(fg(fmt::color::green) | fmt::emphasis::bold, "reset_mv_camera");
-  static const auto identifier_red   = fmt::format(fg(fmt::color::red)   | fmt::emphasis::bold, "reset_mv_camera");
+  static const auto identifier_green =
+      fmt::format(fg(fmt::color::green) | fmt::emphasis::bold, "reset_mv_camera");
+  static const auto identifier_red =
+      fmt::format(fg(fmt::color::red) | fmt::emphasis::bold, "reset_mv_camera");
   static const std::vector<std::string> vendor_id{"f622", "080b"};
   bool status{false};
   fmt::print("[{}] Starting mindvision camera soft reset\n", identifier_green);
   for (const auto& _id : vendor_id) {
     std::string cmd{
-        "lsusb -d : | awk '{split($0, i, \":\"); split(i[1], j, \" \"); print(\"/dev/bus/usb/\"j[2]\"/\"j[4])}'"};
+        "lsusb -d : | awk '{split($0, i, \":\"); split(i[1], j, \" \"); "
+        "print(\"/dev/bus/usb/\"j[2]\"/\"j[4])}'"};
     std::string result{""};
     FILE* pipe = popen(cmd.insert(9, _id).c_str(), "r");
     if (!pipe) {
