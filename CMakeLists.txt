@@ -29,6 +29,13 @@ option(USE_OPENVINO "Enable OpenVINO inference (traditional vision without ONNX)
 option(USE_ONNXRUNTIME "Enable ONNX Runtime inference (traditional vision without OpenVINO)" OFF)
 
 # ============================================================================
+# 开发工具配置
+# ============================================================================
+
+# 导出 compile_commands.json 供 clangd 使用
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# ============================================================================
 # 平台检查
 # ============================================================================
 
