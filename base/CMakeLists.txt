@@ -49,7 +49,6 @@ target_link_libraries(MiracleVision
     # 算法模块
     mv-basic-armor
     mv-fan-armor
-    mv-dnn-armor
     mv-basic-buff
     mv-new-buff
     mv-basic-pnp
@@ -75,23 +74,15 @@ if(USE_MINDVISION_SDK AND TARGET mv-video-capture)
     target_link_libraries(MiracleVision PRIVATE mv-video-capture)
 endif()
 
-# 总是链接 ONNX Runtime (如果系统中存在)
-find_library(ONNXRUNTIME_LIB onnxruntime HINTS /usr/local/lib)
-if(ONNXRUNTIME_LIB)
-    target_link_libraries(MiracleVision PRIVATE ${ONNXRUNTIME_LIB})
-    target_include_directories(MiracleVision PRIVATE /usr/local/include/onnxruntime)
-    message(STATUS "    ! ONNX Runtime found and linked: ${ONNXRUNTIME_LIB}")
+# 如果启用了 ONNX Runtime
+if(USE_ONNXRUNTIME AND TARGET mv-dnn-armor)
+    target_link_libraries(MiracleVision PRIVATE mv-dnn-armor)
+    target_compile_definitions(MiracleVision PRIVATE USE_ONNXRUNTIME)
 endif()
 
 # 如果启用了 OpenVINO
 if(USE_OPENVINO AND TARGET openvino::runtime)
     target_link_libraries(MiracleVision PRIVATE openvino::runtime)
-endif()
-
-# 如果启用了 ONNX Runtime (vcpkg 方式,已废弃)
-if(USE_ONNXRUNTIME AND ONNXRUNTIME_LIB)
-    target_include_directories(MiracleVision PRIVATE ${ONNXRUNTIME_INCLUDE_DIRS})
-    target_link_libraries(MiracleVision PRIVATE ${ONNXRUNTIME_LIB})
 endif()
 
 # 编译定义

@@ -6,9 +6,12 @@
 
 #include <fmt/color.h>
 #include <fmt/core.h>
+#include <opencv2/opencv.hpp>
+
+#ifdef USE_ONNXRUNTIME
 #include <onnxruntime/onnxruntime_c_api.h>
 #include <onnxruntime/onnxruntime_cxx_api.h>
-#include <opencv2/opencv.hpp>
+#endif
 
 namespace DNN_armor {
 auto idntifier = fmt::format(fg(fmt::color::green) | fmt::emphasis::bold, "DNN_INFO");
@@ -20,6 +23,8 @@ struct DNN_Data {
 struct Object {
   int x1, y1, x2, y2, label, prob;
 };
+
+#ifdef USE_ONNXRUNTIME
 class DNN_Model;
 class DNN_Dectect {
  public:
@@ -51,6 +56,7 @@ class DNN_Model {
   std::string model_path;
   Ort::AllocatorWithDefaultOptions allocator;
 };
+#endif  // USE_ONNXRUNTIME
 
 class DNN_Model_CV {
  public:

@@ -65,20 +65,14 @@ int main() {
       fmt::format("{}{}", CONFIG_FILE_PATH, "/camera/mv_camera_config_407.xml"),    // 相机参数
       fmt::format("{}{}", CONFIG_FILE_PATH, "/angle_solve/basic_pnp_config.xml"));  // PnP 参数
 
-  // DNN (深度神经网络) 模块初始化
-  // onnx_inferring::model model_ = onnx_inferring::model(fmt::format("{}{}", SOURCE_PATH,
-  // "/module/ml/mnist-8.onnx")); // 示例代码，未启用
-  Ort::Env env(OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING, "PoseEstimate");  // ONNX Runtime 环境
-  Ort::SessionOptions session_options;                                       // ONNX Session 选项
-  session_options.SetGraphOptimizationLevel(
-      GraphOptimizationLevel::ORT_ENABLE_ALL);  // 设置图优化级别
-
-  // DNN 装甲板检测模型 (如 YOLOv8)
-  DNN_armor::DNN_Model dnn_model = DNN_armor::DNN_Model(
-      fmt::format("{}{}", SOURCE_PATH, "/module/armor/yolov8.onnx"), env, session_options);
-  // DNN 装甲板检测器
-  DNN_armor::DNN_Dectect dnn_armor =
-      DNN_armor::DNN_Dectect(fmt::format("{}{}", CONFIG_FILE_PATH, "/armor/DNN_armor_config.xml"));
+  // DNN 模块暂未集成至主程序，待重构后启用
+  // Ort::Env env(OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING, "PoseEstimate");
+  // Ort::SessionOptions session_options;
+  // session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+  // DNN_armor::DNN_Model dnn_model = DNN_armor::DNN_Model(
+  //     fmt::format("{}{}", SOURCE_PATH, "/module/armor/yolov8.onnx"), env, session_options);
+  // DNN_armor::DNN_Dectect dnn_armor =
+  //     DNN_armor::DNN_Dectect(fmt::format("{}{}", CONFIG_FILE_PATH, "/armor/DNN_armor_config.xml"));
 
   // 角度解算器（用于装甲板）
   angle_solve::solve solution;

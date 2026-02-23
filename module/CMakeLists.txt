@@ -61,18 +61,28 @@ target_include_directories(mv-fan-armor PUBLIC
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
 )
 
-add_library(mv-dnn-armor SHARED armor/DNN_armor.cpp)
-target_link_libraries(mv-dnn-armor
-    PUBLIC
-    opencv_core
-    opencv_imgproc
-    opencv_dnn
-    fmt::fmt
-)
-target_include_directories(mv-dnn-armor PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/armor>
-    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
-)
+if(USE_ONNXRUNTIME)
+    add_library(mv-dnn-armor SHARED armor/DNN_armor.cpp)
+    target_link_libraries(mv-dnn-armor
+        PUBLIC
+        opencv_core
+        opencv_imgproc
+        opencv_dnn
+        fmt::fmt
+    )
+    target_include_directories(mv-dnn-armor PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/armor>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
+    )
+    target_compile_definitions(mv-dnn-armor PUBLIC USE_ONNXRUNTIME)
+    if(ONNXRUNTIME_LIB)
+        target_include_directories(mv-dnn-armor PRIVATE ${ONNXRUNTIME_INCLUDE_DIRS})
+        target_link_libraries(mv-dnn-armor PRIVATE ${ONNXRUNTIME_LIB})
+    endif()
+    message(STATUS "    ✓ mv-dnn-armor enabled (ONNX Runtime)")
+else()
+    message(STATUS "    ⊗ mv-dnn-armor disabled (USE_ONNXRUNTIME=OFF)")
+endif()
 
 # ----------------------------------------------------------------------------
 # buff - 能量机关模块
