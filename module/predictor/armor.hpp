@@ -1,52 +1,24 @@
 #ifndef PREDICTOR__ARMOR_HPP
 #define PREDICTOR__ARMOR_HPP
 
-#include <Eigen/Dense>
-#include <opencv2/opencv.hpp>
 #include <string>
 #include <vector>
 
-namespace predictor
-{
-enum Color
-{
-  red,
-  blue,
-  extinguish,
-  purple
-};
+#include <Eigen/Dense>
+#include <opencv2/opencv.hpp>
+
+namespace predictor {
+enum Color { red, blue, extinguish, purple };
 const std::vector<std::string> COLORS = {"red", "blue", "extinguish", "purple"};
 
-enum ArmorType
-{
-  big,
-  small
-};
+enum ArmorType { big, small };
 const std::vector<std::string> ARMOR_TYPES = {"big", "small"};
 
-enum ArmorName
-{
-  one,
-  two,
-  three,
-  four,
-  five,
-  sentry,
-  outpost,
-  base,
-  not_armor
-};
+enum ArmorName { one, two, three, four, five, sentry, outpost, base, not_armor };
 const std::vector<std::string> ARMOR_NAMES = {"one",    "two",     "three", "four",     "five",
                                               "sentry", "outpost", "base",  "not_armor"};
 
-enum ArmorPriority
-{
-  first = 1,
-  second,
-  third,
-  forth,
-  fifth
-};
+enum ArmorPriority { first = 1, second, third, forth, fifth };
 
 // clang-format off
 const std::vector<std::tuple<Color, ArmorName, ArmorType>> armor_properties = {
@@ -57,15 +29,14 @@ const std::vector<std::tuple<Color, ArmorName, ArmorType>> armor_properties = {
   {blue, four, small},       {red, four, small},       {extinguish, four, small},
   {blue, five, small},       {red, five, small},       {extinguish, five, small},
   {blue, outpost, small},    {red, outpost, small},    {extinguish, outpost, small},
-  {blue, base, big},         {red, base, big},         {extinguish, base, big},      {purple, base, big},       
-  {blue, base, small},       {red, base, small},       {extinguish, base, small},    {purple, base, small},    
-  {blue, three, big},        {red, three, big},        {extinguish, three, big}, 
-  {blue, four, big},         {red, four, big},         {extinguish, four, big},  
+  {blue, base, big},         {red, base, big},         {extinguish, base, big},      {purple, base, big},
+  {blue, base, small},       {red, base, small},       {extinguish, base, small},    {purple, base, small},
+  {blue, three, big},        {red, three, big},        {extinguish, three, big},
+  {blue, four, big},         {red, four, big},         {extinguish, four, big},
   {blue, five, big},         {red, five, big},         {extinguish, five, big}};
 // clang-format on
 
-struct Lightbar
-{
+struct Lightbar {
   std::size_t id;
   Color color;
   cv::Point2f center, top, bottom, top2bottom;
@@ -73,14 +44,13 @@ struct Lightbar
   double angle, angle_error, length, width, ratio;
   cv::RotatedRect rotated_rect;
 
-  Lightbar(const cv::RotatedRect & rotated_rect, std::size_t id);
-  Lightbar() {};
+  Lightbar(const cv::RotatedRect& rotated_rect, std::size_t id);
+  Lightbar(){};
 };
 
-struct Armor
-{
+struct Armor {
   Color color;
-  Lightbar left, right;     //used to be const
+  Lightbar left, right;     // used to be const
   cv::Point2f center;       // 不是对角线交点，不能作为实际中心！
   cv::Point2f center_norm;  // 归一化坐标
   std::vector<cv::Point2f> points;
@@ -106,20 +76,17 @@ struct Armor
 
   double yaw_raw;  // rad
 
-  Armor(const Lightbar & left, const Lightbar & right);
-  Armor(
-    int class_id, float confidence, const cv::Rect & box, std::vector<cv::Point2f> armor_keypoints);
-  Armor(
-    int class_id, float confidence, const cv::Rect & box, std::vector<cv::Point2f> armor_keypoints,
-    cv::Point2f offset);
-  Armor(
-    int color_id, int num_id, float confidence, const cv::Rect & box,
-    std::vector<cv::Point2f> armor_keypoints);
-  Armor(
-    int color_id, int num_id, float confidence, const cv::Rect & box,
-    std::vector<cv::Point2f> armor_keypoints, cv::Point2f offset);
+  Armor(const Lightbar& left, const Lightbar& right);
+  Armor(int class_id, float confidence, const cv::Rect& box,
+        std::vector<cv::Point2f> armor_keypoints);
+  Armor(int class_id, float confidence, const cv::Rect& box,
+        std::vector<cv::Point2f> armor_keypoints, cv::Point2f offset);
+  Armor(int color_id, int num_id, float confidence, const cv::Rect& box,
+        std::vector<cv::Point2f> armor_keypoints);
+  Armor(int color_id, int num_id, float confidence, const cv::Rect& box,
+        std::vector<cv::Point2f> armor_keypoints, cv::Point2f offset);
 };
 
-}  // namespace auto_aim
+}  // namespace predictor
 
 #endif  // AUTO_AIM__ARMOR_HPP

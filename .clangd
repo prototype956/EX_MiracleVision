@@ -1,0 +1,69 @@
+# clangd 配置文件
+# 用于提供智能补全、代码导航和实时诊断
+
+CompileFlags:
+  # 编译数据库路径
+  CompilationDatabase: build/
+  # 添加额外的编译器标志
+  Add:
+    - "-std=c++17"
+    - "-Wall"
+    - "-Wextra"
+  # 移除可能导致问题的标志
+  Remove:
+    - "-march=*"
+    - "-mtune=*"
+
+Diagnostics:
+  # 启用 clang-tidy 检查
+  ClangTidy:
+    Add:
+      # Google 代码风格检查
+      - google-*
+      # 现代 C++ 最佳实践
+      - modernize-*
+      # 性能优化建议
+      - performance-*
+      # 可读性改进
+      - readability-*
+      # Bug 检测
+      - bugprone-*
+      # C++ 核心指南
+      - cppcoreguidelines-*
+    Remove:
+      # 移除过于严格或不适用的检查
+      - modernize-use-trailing-return-type
+      - cppcoreguidelines-avoid-magic-numbers
+      - readability-magic-numbers
+      - google-readability-todo
+      - cppcoreguidelines-pro-bounds-pointer-arithmetic
+      - cppcoreguidelines-pro-type-reinterpret-cast
+  # 取消未使用参数的警告（对于接口实现很常见）
+  UnusedIncludes: Strict
+  MissingIncludes: Strict
+  # 排除第三方库和构建目录的诊断
+  Includes:
+    IgnoreHeader:
+      - 3rdparty/.*
+      - build/.*
+
+Index:
+  # 启用后台索引以提高性能
+  Background: Build
+  # 标准库索引
+  StandardLibrary: Yes
+
+Hover:
+  # 悬停时显示的信息
+  ShowAKA: Yes
+
+InlayHints:
+  # 内联提示
+  Enabled: Yes
+  ParameterNames: Yes
+  DeducedTypes: Yes
+  Designators: Yes
+
+Completion:
+  # 代码补全设置
+  AllScopes: Yes

@@ -1,0 +1,82 @@
+{
+  // ============================================================================
+  // VS Code 工作区设置 - 代码规范化配置
+  // ============================================================================
+  
+  // ============================================================================
+  // clangd 配置
+  // ============================================================================
+  "clangd.arguments": [
+    "--background-index",
+    "--clang-tidy",
+    "--completion-style=detailed",
+    "--header-insertion=iwyu",
+    "--pch-storage=memory",
+    "--all-scopes-completion",
+    "--log=error",
+    "--pretty"
+  ],
+  "clangd.path": "clangd",
+  
+  // ============================================================================
+  // C/C++ 扩展配置（禁用以避免与 clangd 冲突）
+  // ============================================================================
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "C_Cpp.autocomplete": "disabled",
+  "C_Cpp.errorSquiggles": "disabled",
+  
+  // ============================================================================
+  // 编辑器格式化配置
+  // ============================================================================
+  "[cpp]": {
+    "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+    "editor.formatOnSave": true,
+    "editor.formatOnType": false,
+    "editor.formatOnPaste": false
+  },
+  "[c]": {
+    "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+    "editor.formatOnSave": true,
+    "editor.formatOnType": false,
+    "editor.formatOnPaste": false
+  },
+  
+  // ============================================================================
+  // 代码风格提示
+  // ============================================================================
+  "editor.inlayHints.enabled": "onUnlessPressed",
+  "editor.parameterHints.enabled": true,
+  
+  // ============================================================================
+  // 文件关联
+  // ============================================================================
+  "files.associations": {
+    "*.hpp": "cpp",
+    "*.cpp": "cpp",
+    "*.h": "c",
+    "*.c": "c"
+  },
+  
+  // ============================================================================
+  // 代码检查
+  // ============================================================================
+  "editor.codeActionsOnSave": {
+    "source.fixAll": "explicit"
+  },
+  
+  // ============================================================================
+  // CMake 配置
+  // ============================================================================
+  "cmake.configureOnOpen": true,
+  "cmake.buildDirectory": "${workspaceFolder}/build",
+  
+  // ============================================================================
+  // 其他编辑器设置
+  // ============================================================================
+  "editor.rulers": [100],
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "files.trimFinalNewlines": true
+}

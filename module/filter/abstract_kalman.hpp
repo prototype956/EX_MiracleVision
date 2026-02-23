@@ -1,6 +1,3 @@
 #pragma once
 
-namespace abstract_dnn
-{
-
-}
+namespace abstract_dnn {}

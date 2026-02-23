@@ -1,0 +1,233 @@
+# =============================================================================
+# EX_MiracleVision CI Pipeline
+# =============================================================================
+# 触发条件: PR 目标为 dev 或 main 分支
+# 检查项目:
+#   1. clang-format - 代码格式检查
+#   2. cmake build  - 编译检查
+#   3. clang-tidy   - 静态分析（基于编译数据库）
+# =============================================================================
+
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+
+# 同一 PR 的新 push 会取消正在运行的旧 CI，节省资源
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ===========================================================================
+  # Job 1: clang-format 格式检查（不需要编译，最快完成）
+  # ===========================================================================
+  format-check:
+    name: 🎨 Code Format Check
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-14
+
+      - name: Check code formatting
+        run: |
+          # 查找所有项目源文件（排除 3rdparty 和 build）
+          FILES=$(find . -type f \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" \) \
+            ! -path "./build/*" \
+            ! -path "./3rdparty/*" \
+            ! -path "./.git/*")
+
+          if [ -z "$FILES" ]; then
+            echo "No source files found."
+            exit 0
+          fi
+
+          echo "Checking $(echo "$FILES" | wc -l) files..."
+
+          # --dry-run + --Werror: 不修改文件，格式不符则报错
+          FAILED=0
+          while IFS= read -r file; do
+            if ! clang-format-14 --style=file --dry-run --Werror "$file" 2>/dev/null; then
+              echo "❌ Format violation: $file"
+              # 显示 diff 方便开发者修复
+              clang-format-14 --style=file "$file" | diff --color=always "$file" - || true
+              FAILED=1
+            fi
+          done <<< "$FILES"
+
+          if [ $FAILED -eq 1 ]; then
+            echo ""
+            echo "=========================================="
+            echo "❌ Code format check FAILED"
+            echo "=========================================="
+            echo "Run 'scripts/format_code.sh' locally to fix."
+            exit 1
+          fi
+
+          echo "✅ All files are properly formatted."
+
+  # ===========================================================================
+  # Job 2: CMake 编译检查
+  # ===========================================================================
+  build:
+    name: 🔨 Build Check
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            pkg-config \
+            libopencv-dev \
+            libfmt-dev \
+            libspdlog-dev \
+            libeigen3-dev \
+            libyaml-cpp-dev \
+            nlohmann-json3-dev \
+            libtbb-dev
+
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DUSE_MINDVISION_SDK=OFF \
+            -DUSE_FOXGLOVE_SDK=OFF \
+            -DUSE_OPENVINO=OFF \
+            -DUSE_ONNXRUNTIME=OFF \
+            -DBUILD_TESTS=OFF \
+            -DBUILD_MAIN=ON
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      # 上传 compile_commands.json 供 clang-tidy job 使用
+      - name: Upload compile_commands.json
+        uses: actions/upload-artifact@v4
+        with:
+          name: compile-commands
+          path: build/compile_commands.json
+          retention-days: 1
+
+  # ===========================================================================
+  # Job 3: clang-tidy 静态分析（依赖 build job 的编译数据库）
+  # ===========================================================================
+  clang-tidy:
+    name: 🔍 Clang-Tidy Analysis
+    runs-on: ubuntu-22.04
+    needs: build  # 需要 build job 生成的 compile_commands.json
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang-tidy-14 \
+            libopencv-dev \
+            libfmt-dev \
+            libspdlog-dev \
+            libeigen3-dev \
+            libyaml-cpp-dev \
+            nlohmann-json3-dev \
+            libtbb-dev
+
+      # 下载 build job 生成的编译数据库
+      - name: Download compile_commands.json
+        uses: actions/download-artifact@v4
+        with:
+          name: compile-commands
+          path: build/
+
+      - name: Run clang-tidy
+        run: |
+          # 查找所有项目源文件
+          FILES=$(find . -type f \( -name "*.cpp" -o -name "*.hpp" \) \
+            ! -path "./build/*" \
+            ! -path "./3rdparty/*" \
+            ! -path "./.git/*")
+
+          if [ -z "$FILES" ]; then
+            echo "No source files found."
+            exit 0
+          fi
+
+          FILE_COUNT=$(echo "$FILES" | wc -l)
+          echo "Analyzing $FILE_COUNT files with clang-tidy..."
+          echo ""
+
+          TOTAL_WARNINGS=0
+          TOTAL_ERRORS=0
+          FAILED_FILES=""
+
+          while IFS= read -r file; do
+            echo "::group::Checking: $file"
+
+            # TODO(重构完成后立即修复): 此处用 || true 故意吞掉了 clang-tidy 的非零退出码，
+            # 导致 --warnings-as-errors='*' 实际上不生效——clang-tidy 报 warning 也不会阻断 CI。
+            # 原因：项目存在大量待重构的历史代码，暂时无法通过严格检查。
+            # 修复方式：删除 || true，改为：
+            #   set +e
+            #   OUTPUT=$(clang-tidy-14 -p build --warnings-as-errors='*' "$file" 2>&1)
+            #   EXIT_CODE=$?
+            #   set -e
+            # 并将判断条件改为 if [ $EXIT_CODE -ne 0 ] || ...
+            OUTPUT=$(clang-tidy-14 \
+              -p build \
+              --warnings-as-errors='*' \
+              "$file" 2>&1 || true)
+
+            WARNINGS=$(echo "$OUTPUT" | grep -c "warning:" || true)
+            ERRORS=$(echo "$OUTPUT" | grep -c "error:" || true)
+
+            TOTAL_WARNINGS=$((TOTAL_WARNINGS + WARNINGS))
+            TOTAL_ERRORS=$((TOTAL_ERRORS + ERRORS))
+
+            if [ $WARNINGS -gt 0 ] || [ $ERRORS -gt 0 ]; then
+              echo "$OUTPUT"
+              FAILED_FILES="$FAILED_FILES\n  ❌ $file (warnings: $WARNINGS, errors: $ERRORS)"
+            else
+              echo "✅ No issues"
+            fi
+
+            echo "::endgroup::"
+          done <<< "$FILES"
+
+          echo ""
+          echo "=========================================="
+          echo "  Clang-Tidy Analysis Summary"
+          echo "=========================================="
+          echo "Files checked:  $FILE_COUNT"
+          echo "Total warnings: $TOTAL_WARNINGS"
+          echo "Total errors:   $TOTAL_ERRORS"
+
+          if [ -n "$FAILED_FILES" ]; then
+            echo ""
+            echo "Files with issues:"
+            echo -e "$FAILED_FILES"
+          fi
+
+          echo ""
+
+          if [ $TOTAL_WARNINGS -gt 0 ] || [ $TOTAL_ERRORS -gt 0 ]; then
+            echo "❌ Clang-tidy check FAILED"
+            echo "Run 'scripts/check_code.sh' locally to see details."
+            exit 1
+          fi
+
+          echo "✅ Clang-tidy check passed!"

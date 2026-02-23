@@ -1,32 +1,28 @@
 #include "solver.hpp"
 
-#include <yaml-cpp/yaml.h>
+#include "utils/logger.hpp"
+#include "utils/math_tools.hpp"
 
 #include <vector>
 
 #include <fmt/core.h>
-#include "utils/logger.hpp"
-#include "utils/math_tools.hpp"
+#include <yaml-cpp/yaml.h>
 
-namespace predictor
-{
+namespace predictor {
 constexpr double LIGHTBAR_LENGTH = 56e-3;     // m
 constexpr double BIG_ARMOR_WIDTH = 230e-3;    // m
 constexpr double SMALL_ARMOR_WIDTH = 135e-3;  // m
 
-const std::vector<cv::Point3f> BIG_ARMOR_POINTS{
-  {0, BIG_ARMOR_WIDTH / 2, LIGHTBAR_LENGTH / 2},
-  {0, -BIG_ARMOR_WIDTH / 2, LIGHTBAR_LENGTH / 2},
-  {0, -BIG_ARMOR_WIDTH / 2, -LIGHTBAR_LENGTH / 2},
-  {0, BIG_ARMOR_WIDTH / 2, -LIGHTBAR_LENGTH / 2}};
-const std::vector<cv::Point3f> SMALL_ARMOR_POINTS{
-  {0, SMALL_ARMOR_WIDTH / 2, LIGHTBAR_LENGTH / 2},
-  {0, -SMALL_ARMOR_WIDTH / 2, LIGHTBAR_LENGTH / 2},
-  {0, -SMALL_ARMOR_WIDTH / 2, -LIGHTBAR_LENGTH / 2},
-  {0, SMALL_ARMOR_WIDTH / 2, -LIGHTBAR_LENGTH / 2}};
+const std::vector<cv::Point3f> BIG_ARMOR_POINTS{{0, BIG_ARMOR_WIDTH / 2, LIGHTBAR_LENGTH / 2},
+                                                {0, -BIG_ARMOR_WIDTH / 2, LIGHTBAR_LENGTH / 2},
+                                                {0, -BIG_ARMOR_WIDTH / 2, -LIGHTBAR_LENGTH / 2},
+                                                {0, BIG_ARMOR_WIDTH / 2, -LIGHTBAR_LENGTH / 2}};
+const std::vector<cv::Point3f> SMALL_ARMOR_POINTS{{0, SMALL_ARMOR_WIDTH / 2, LIGHTBAR_LENGTH / 2},
+                                                  {0, -SMALL_ARMOR_WIDTH / 2, LIGHTBAR_LENGTH / 2},
+                                                  {0, -SMALL_ARMOR_WIDTH / 2, -LIGHTBAR_LENGTH / 2},
+                                                  {0, SMALL_ARMOR_WIDTH / 2, -LIGHTBAR_LENGTH / 2}};
 
-Solver::Solver(const std::string & config_path) : R_gimbal2world_(Eigen::Matrix3d::Identity())
-{
+Solver::Solver(const std::string& config_path) : R_gimbal2world_(Eigen::Matrix3d::Identity()) {
   auto yaml = YAML::LoadFile(config_path);
 
   auto R_gimbal2imubody_data = yaml["R_gimbal2imubody"].as<std::vector<double>>();
@@ -44,24 +40,23 @@ Solver::Solver(const std::string & config_path) : R_gimbal2world_(Eigen::Matrix3
   cv::eigen2cv(distort_coeffs, distort_coeffs_);
 }
 
-Eigen::Matrix3d Solver::R_gimbal2world() const { return R_gimbal2world_; }
+Eigen::Matrix3d Solver::R_gimbal2world() const {
+  return R_gimbal2world_;
+}
 
-void Solver::set_R_gimbal2world(const Eigen::Quaterniond & q)
-{
+void Solver::set_R_gimbal2world(const Eigen::Quaterniond& q) {
   Eigen::Matrix3d R_imubody2imuabs = q.toRotationMatrix();
   R_gimbal2world_ = R_gimbal2imubody_.transpose() * R_imubody2imuabs * R_gimbal2imubody_;
 }
 
-//solvePnP（获得姿态）
-void Solver::solve(Armor & armor) const
-{
-  const auto & object_points =
-    (armor.type == ArmorType::big) ? BIG_ARMOR_POINTS : SMALL_ARMOR_POINTS;
+// solvePnP（获得姿态）
+void Solver::solve(Armor& armor) const {
+  const auto& object_points =
+      (armor.type == ArmorType::big) ? BIG_ARMOR_POINTS : SMALL_ARMOR_POINTS;
 
   cv::Vec3d rvec, tvec;
-  cv::solvePnP(
-    object_points, armor.points, camera_matrix_, distort_coeffs_, rvec, tvec, false,
-    cv::SOLVEPNP_IPPE);
+  cv::solvePnP(object_points, armor.points, camera_matrix_, distort_coeffs_, rvec, tvec, false,
+               cv::SOLVEPNP_IPPE);
 
   Eigen::Vector3d xyz_in_camera;
   cv::cv2eigen(tvec, xyz_in_camera);
@@ -83,14 +78,14 @@ void Solver::solve(Armor & armor) const
   auto is_balance = (armor.type == ArmorType::big) &&
                     (armor.name == ArmorName::three || armor.name == ArmorName::four ||
                      armor.name == ArmorName::five);
-  if (is_balance) return;
+  if (is_balance)
+    return;
 
   optimize_yaw(armor);
 }
 
-std::vector<cv::Point2f> Solver::reproject_armor(
-  const Eigen::Vector3d & xyz_in_world, double yaw, ArmorType type, ArmorName name) const
-{
+std::vector<cv::Point2f> Solver::reproject_armor(const Eigen::Vector3d& xyz_in_world, double yaw,
+                                                 ArmorType type, ArmorName name) const {
   auto sin_yaw = std::sin(yaw);
   auto cos_yaw = std::cos(yaw);
 
@@ -107,11 +102,11 @@ std::vector<cv::Point2f> Solver::reproject_armor(
   // clang-format on
 
   // get R_armor2camera t_armor2camera
-  const Eigen::Vector3d & t_armor2world = xyz_in_world;
+  const Eigen::Vector3d& t_armor2world = xyz_in_world;
   Eigen::Matrix3d R_armor2camera =
-    R_camera2gimbal_.transpose() * R_gimbal2world_.transpose() * R_armor2world;
-  Eigen::Vector3d t_armor2camera =
-    R_camera2gimbal_.transpose() * (R_gimbal2world_.transpose() * t_armor2world - t_camera2gimbal_);
+      R_camera2gimbal_.transpose() * R_gimbal2world_.transpose() * R_armor2world;
+  Eigen::Vector3d t_armor2camera = R_camera2gimbal_.transpose() *
+                                   (R_gimbal2world_.transpose() * t_armor2world - t_camera2gimbal_);
 
   // get rvec tvec
   cv::Vec3d rvec;
@@ -122,40 +117,38 @@ std::vector<cv::Point2f> Solver::reproject_armor(
 
   // reproject
   std::vector<cv::Point2f> image_points;
-  const auto & object_points = (type == ArmorType::big) ? BIG_ARMOR_POINTS : SMALL_ARMOR_POINTS;
+  const auto& object_points = (type == ArmorType::big) ? BIG_ARMOR_POINTS : SMALL_ARMOR_POINTS;
   cv::projectPoints(object_points, rvec, tvec, camera_matrix_, distort_coeffs_, image_points);
-  
+
   return image_points;
 }
 
-cv::Point2f Solver::reproject_point(const Eigen::Vector3d & xyz_in_world) const
-{
+cv::Point2f Solver::reproject_point(const Eigen::Vector3d& xyz_in_world) const {
   // 将世界坐标转换到相机坐标系
   Eigen::Vector3d xyz_in_gimbal = R_gimbal2world_.transpose() * xyz_in_world;
-  Eigen::Vector3d xyz_in_camera = -R_camera2gimbal_.transpose() * (xyz_in_gimbal - t_camera2gimbal_);
-  
+  Eigen::Vector3d xyz_in_camera =
+      -R_camera2gimbal_.transpose() * (xyz_in_gimbal - t_camera2gimbal_);
+
   // 转换为 OpenCV 格式并投影到图像平面
   std::vector<cv::Point3f> object_point;
   object_point.push_back(cv::Point3f(xyz_in_camera[0], xyz_in_camera[1], xyz_in_camera[2]));
-  
+
   std::vector<cv::Point2f> image_point;
   cv::Vec3d rvec(0, 0, 0);  // 零旋转，因为点已经在相机坐标系中
   cv::Vec3d tvec(0, 0, 0);  // 零平移
   cv::projectPoints(object_point, rvec, tvec, camera_matrix_, distort_coeffs_, image_point);
-  
+
   return image_point[0];
 }
 
-double Solver::oupost_reprojection_error(Armor armor, const double & pitch)
-{
+double Solver::oupost_reprojection_error(Armor armor, const double& pitch) {
   // solve
-  const auto & object_points =
-    (armor.type == ArmorType::big) ? BIG_ARMOR_POINTS : SMALL_ARMOR_POINTS;
+  const auto& object_points =
+      (armor.type == ArmorType::big) ? BIG_ARMOR_POINTS : SMALL_ARMOR_POINTS;
 
   cv::Vec3d rvec, tvec;
-  cv::solvePnP(
-    object_points, armor.points, camera_matrix_, distort_coeffs_, rvec, tvec, false,
-    cv::SOLVEPNP_IPPE);
+  cv::solvePnP(object_points, armor.points, camera_matrix_, distort_coeffs_, rvec, tvec, false,
+               cv::SOLVEPNP_IPPE);
 
   Eigen::Vector3d xyz_in_camera;
   cv::cv2eigen(tvec, xyz_in_camera);
@@ -191,11 +184,11 @@ double Solver::oupost_reprojection_error(Armor armor, const double & pitch)
   // clang-format on
 
   // get R_armor2camera t_armor2camera
-  const Eigen::Vector3d & t_armor2world = xyz_in_world;
+  const Eigen::Vector3d& t_armor2world = xyz_in_world;
   Eigen::Matrix3d _R_armor2camera =
-    R_camera2gimbal_.transpose() * R_gimbal2world_.transpose() * _R_armor2world;
-  Eigen::Vector3d t_armor2camera =
-    R_camera2gimbal_.transpose() * (R_gimbal2world_.transpose() * t_armor2world - t_camera2gimbal_);
+      R_camera2gimbal_.transpose() * R_gimbal2world_.transpose() * _R_armor2world;
+  Eigen::Vector3d t_armor2camera = R_camera2gimbal_.transpose() *
+                                   (R_gimbal2world_.transpose() * t_armor2world - t_camera2gimbal_);
 
   // get rvec tvec
   cv::Vec3d _rvec;
@@ -209,12 +202,12 @@ double Solver::oupost_reprojection_error(Armor armor, const double & pitch)
   cv::projectPoints(object_points, _rvec, _tvec, camera_matrix_, distort_coeffs_, image_points);
 
   auto error = 0.0;
-  for (int i = 0; i < 4; i++) error += cv::norm(armor.points[i] - image_points[i]);
+  for (int i = 0; i < 4; i++)
+    error += cv::norm(armor.points[i] - image_points[i]);
   return error;
 }
 
-void Solver::optimize_yaw(Armor & armor) const
-{
+void Solver::optimize_yaw(Armor& armor) const {
   Eigen::Vector3d gimbal_ypr = tools::eulers(R_gimbal2world_, 2, 1, 0);
 
   constexpr double SEARCH_RANGE = 140;  // degree
@@ -237,10 +230,8 @@ void Solver::optimize_yaw(Armor & armor) const
   armor.ypr_in_world[0] = best_yaw;
 }
 
-double Solver::SJTU_cost(
-  const std::vector<cv::Point2f> & cv_refs, const std::vector<cv::Point2f> & cv_pts,
-  const double & inclined) const
-{
+double Solver::SJTU_cost(const std::vector<cv::Point2f>& cv_refs,
+                         const std::vector<cv::Point2f>& cv_pts, const double& inclined) const {
   std::size_t size = cv_refs.size();
   std::vector<Eigen::Vector2d> refs;
   std::vector<Eigen::Vector2d> pts;
@@ -256,35 +247,34 @@ double Solver::SJTU_cost(
     Eigen::Vector2d pt_d = pts[p] - pts[i];
     // 长度差代价 + 起点差代价(1 / 2)（0 度左右应该抛弃)
     double pixel_dis =  // dis 是指方差平面内到原点的距离
-      (0.5 * ((refs[i] - pts[i]).norm() + (refs[p] - pts[p]).norm()) +
-       std::fabs(ref_d.norm() - pt_d.norm())) /
-      ref_d.norm();
+        (0.5 * ((refs[i] - pts[i]).norm() + (refs[p] - pts[p]).norm()) +
+         std::fabs(ref_d.norm() - pt_d.norm())) /
+        ref_d.norm();
     double angular_dis = ref_d.norm() * tools::get_abs_angle(ref_d, pt_d) / ref_d.norm();
     // 平方可能是为了配合 sin 和 cos
     // 弧度差代价（0 度左右占比应该大）
     double cost_i =
-      tools::square(pixel_dis * std::sin(inclined)) +
-      tools::square(angular_dis * std::cos(inclined)) * 2.0;  // DETECTOR_ERROR_PIXEL_BY_SLOPE
+        tools::square(pixel_dis * std::sin(inclined)) +
+        tools::square(angular_dis * std::cos(inclined)) * 2.0;  // DETECTOR_ERROR_PIXEL_BY_SLOPE
     // 重投影像素误差越大，越相信斜率
     cost += std::sqrt(cost_i);
   }
   return cost;
 }
 
-double Solver::armor_reprojection_error(
-  const Armor & armor, double yaw, const double & inclined) const
-{
+double Solver::armor_reprojection_error(const Armor& armor, double yaw,
+                                        const double& inclined) const {
   auto image_points = reproject_armor(armor.xyz_in_world, yaw, armor.type, armor.name);
   auto error = 0.0;
-  for (int i = 0; i < 4; i++) error += cv::norm(armor.points[i] - image_points[i]);
+  for (int i = 0; i < 4; i++)
+    error += cv::norm(armor.points[i] - image_points[i]);
   // auto error = SJTU_cost(image_points, armor.points, inclined);
 
   return error;
 }
 
 // 世界坐标到像素坐标的转换
-std::vector<cv::Point2f> Solver::world2pixel(const std::vector<cv::Point3f> & worldPoints)
-{
+std::vector<cv::Point2f> Solver::world2pixel(const std::vector<cv::Point3f>& worldPoints) {
   Eigen::Matrix3d R_world2camera = R_camera2gimbal_.transpose() * R_gimbal2world_.transpose();
   Eigen::Vector3d t_world2camera = -R_camera2gimbal_.transpose() * t_camera2gimbal_;
 
@@ -294,7 +284,7 @@ std::vector<cv::Point2f> Solver::world2pixel(const std::vector<cv::Point3f> & wo
   cv::eigen2cv(t_world2camera, tvec);
 
   std::vector<cv::Point3f> valid_world_points;
-  for (const auto & world_point : worldPoints) {
+  for (const auto& world_point : worldPoints) {
     Eigen::Vector3d world_point_eigen(world_point.x, world_point.y, world_point.z);
     Eigen::Vector3d camera_point = R_world2camera * world_point_eigen + t_world2camera;
 
@@ -310,4 +300,4 @@ std::vector<cv::Point2f> Solver::world2pixel(const std::vector<cv::Point3f> & wo
   cv::projectPoints(valid_world_points, rvec, tvec, camera_matrix_, distort_coeffs_, pixelPoints);
   return pixelPoints;
 }
-}  // namespace auto_aim
+}  // namespace predictor

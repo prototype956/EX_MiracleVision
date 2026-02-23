@@ -1,18 +1,11 @@
 #ifndef IO__COMMAND_HPP
 #define IO__COMMAND_HPP
 
-namespace io
-{
+namespace io {
 // 射击模式枚举
-enum ShootMode
-{
-  center_shoot = 0,
-  left_shoot = 1,
-  right_shoot = 2
-};
+enum ShootMode { center_shoot = 0, left_shoot = 1, right_shoot = 2 };
 
-struct Command
-{
+struct Command {
   bool control;
   bool shoot;
   double yaw;
