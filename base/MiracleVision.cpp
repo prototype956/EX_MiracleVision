@@ -119,7 +119,7 @@ int main() {
     }
 #else
     cap_.read(src_img);  // SDK 不可用时直接使用 OpenCV 捕获
-#endif  // HAS_MVSDK
+#endif                                                  // HAS_MVSDK
     cv::Size frameSize = {src_img.cols, src_img.rows};  // 图像尺寸
                                                         // cap_fps = cap_.get(cv::CAP_PROP_FPS);
                                                         // cap_fps = 30; // 默认/固定 FPS
@@ -273,9 +273,9 @@ int main() {
 
 #ifndef VIDEO_DEBUG
 #ifdef HAS_MVSDK
-      mv_capture_->cameraReleasebuff();  // MindVision 相机释放缓存
-#endif  // HAS_MVSDK
-#endif  // !VIDEO_DEBUG
+    mv_capture_->cameraReleasebuff();  // MindVision 相机释放缓存
+#endif                                 // HAS_MVSDK
+#endif                                 // !VIDEO_DEBUG
     // 释放装甲板检测模块的内存或更新配置
     basic_armor_.freeMemory(
         fmt::format("{}{}", CONFIG_FILE_PATH, "/armor/basic_armor_config_new.xml"));
@@ -285,9 +285,9 @@ int main() {
     {
 #ifndef VIDEO_DEBUG
 #ifdef HAS_MVSDK
-      mv_capture_->~VideoCapture();  // 释放旧的相机对象
-#endif  // HAS_MVSDK
-#endif  // !VIDEO_DEBUG
+      mv_capture_->~VideoCapture();     // 释放旧的相机对象
+#endif                                  // HAS_MVSDK
+#endif                                  // !VIDEO_DEBUG
       static int counter_for_dev{100};  // 尝试设备重启计数器
       static int counter_for_new{30};   // 尝试创建新对象计数器
       while (!utils::resetMVCamera())   // 尝试重置 MindVision 相机
@@ -304,8 +304,8 @@ int main() {
       // 重启成功，重新创建 MindVision 相机对象
       mv_capture_ = new mindvision::VideoCapture(mindvision::CameraParam(
           0, mindvision::RESOLUTION_1280_X_800, mindvision::EXPOSURE_40000));
-#endif  // HAS_MVSDK
-#endif  // !VIDEO_DEBUG
+#endif                         // HAS_MVSDK
+#endif                         // !VIDEO_DEBUG
       if (!--counter_for_new)  // 如果尝试次数耗尽
       {
         // int i [[maybe_unused]] = std::system("reboot"); // 重启整个系统
