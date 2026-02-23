@@ -72,6 +72,9 @@ endif()
 # 如果启用了 MindVision SDK
 if(USE_MINDVISION_SDK AND TARGET mv-video-capture)
     target_link_libraries(MiracleVision PRIVATE mv-video-capture)
+    # 修复CI时的编译错误：
+    # 由于 mv-video-capture 是 PRIVATE 链接，HAS_MVSDK 宏没有传播到主程序，导致头文件中的 #ifdef HAS_MVSDK 条件编译失败
+    target_compile_definitions(MiracleVision PRIVATE HAS_MVSDK)
 endif()
 
 # 如果启用了 ONNX Runtime

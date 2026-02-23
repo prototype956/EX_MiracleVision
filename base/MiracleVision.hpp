@@ -20,10 +20,12 @@
 #include <opencv2/core.hpp>  // 核心功能（如 Mat, Size）
 
 // 自定义模块头文件
-#include "devices/camera/mv_video_capture.hpp"  // MindVision 相机视频捕获
-#include "devices/serial/uart_serial.hpp"       // UART 串口通信
-#include "module/angle_solve/angle_solve.hpp"   // 角度解算模块
-#include "module/armor/basic_armor.hpp"         // 基础装甲板检测
+#ifdef HAS_MVSDK
+#include "devices/camera/mv_video_capture.hpp"  // MindVision 相机视频捕获（需要 SDK）
+#endif
+#include "devices/serial/uart_serial.hpp"      // UART 串口通信
+#include "module/angle_solve/angle_solve.hpp"  // 角度解算模块
+#include "module/armor/basic_armor.hpp"        // 基础装甲板检测
 // DNN_armor.hpp 暂未在主程序中启用，待重构后引入
 // #include "module/armor/DNN_armor.hpp"
 #include "module/buff/basic_buff.hpp"  // 基础能量机关检测

@@ -121,21 +121,23 @@ class VideoCapture {
   inline cv::Mat image() const { return cv::cvarrToMat(iplImage, true); }
 
  private:
-  unsigned char* g_pRgbBuffer;
+  unsigned char* g_pRgbBuffer = nullptr;
 
   int iCameraCounts = 1;
   int iStatus = -1;
-  int hCamera;
+  int hCamera = 0;
   int channel = 3;
   bool iscamera0_open = false;
 
+#ifdef HAS_MVSDK
   tSdkCameraDevInfo tCameraEnumList;
   tSdkCameraCapbility tCapability;
   tSdkFrameHead sFrameInfo;
   tSdkImageResolution pImageResolution;
-  BYTE* pbyBuffer;
+  BYTE* pbyBuffer = nullptr;
   BOOL AEstate = FALSE;
   IplImage* iplImage = nullptr;
+#endif
 };
 
 }  // namespace mindvision
