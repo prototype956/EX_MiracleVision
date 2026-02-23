@@ -8,7 +8,9 @@
  */
 #pragma once
 
+#ifdef HAS_MVSDK
 #include <CameraApi.h>
+#endif
 #include <fmt/color.h>
 #include <fmt/core.h>
 #include <opencv2/core.hpp>

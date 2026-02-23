@@ -7,7 +7,7 @@ message(STATUS "  Configuring main executable...")
 # ----------------------------------------------------------------------------
 # MiracleVision - 主程序
 # ----------------------------------------------------------------------------
-add_executable(MiracleVision 
+add_executable(MiracleVision
     MiracleVision.cpp
     ${CMAKE_SOURCE_DIR}/utils/plotter.cpp
 )
@@ -26,14 +26,14 @@ target_link_libraries(MiracleVision
     PRIVATE
     # 线程库
     Threads::Threads
-    
+
     # vcpkg 依赖
     fmt::fmt
     spdlog::spdlog
     yaml-cpp
     nlohmann_json::nlohmann_json
     TBB::tbb
-    
+
     # OpenCV
     opencv_core
     opencv_imgproc
@@ -42,11 +42,10 @@ target_link_libraries(MiracleVision
     opencv_imgcodecs
     opencv_calib3d
     opencv_dnn
-    
+
     # 设备层
-    mv-video-capture
     mv-uart-serial
-    
+
     # 算法模块
     mv-basic-armor
     mv-fan-armor
@@ -60,7 +59,7 @@ target_link_libraries(MiracleVision
     mv-onnx-inferring
     mv-camera-calibration
     mv-predictor
-    
+
     # 工具库
     mv-img-tools
     mv-plotter
@@ -72,10 +71,8 @@ if(TARGET mv-foxglove-publisher)
 endif()
 
 # 如果启用了 MindVision SDK
-if(TARGET MVSDK)
-    target_link_libraries(MiracleVision PRIVATE MVSDK)
-    # 显式添加 MVSDK 库路径以解决符号引用问题
-    target_link_directories(MiracleVision PRIVATE ${CMAKE_SOURCE_DIR}/3rdparty/mindvision/linux/lib/x64)
+if(USE_MINDVISION_SDK AND TARGET mv-video-capture)
+    target_link_libraries(MiracleVision PRIVATE mv-video-capture)
 endif()
 
 # 总是链接 ONNX Runtime (如果系统中存在)
