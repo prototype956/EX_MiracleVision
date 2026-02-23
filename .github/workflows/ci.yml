@@ -178,6 +178,15 @@ jobs:
           while IFS= read -r file; do
             echo "::group::Checking: $file"
 
+            # TODO(重构完成后立即修复): 此处用 || true 故意吞掉了 clang-tidy 的非零退出码，
+            # 导致 --warnings-as-errors='*' 实际上不生效——clang-tidy 报 warning 也不会阻断 CI。
+            # 原因：项目存在大量待重构的历史代码，暂时无法通过严格检查。
+            # 修复方式：删除 || true，改为：
+            #   set +e
+            #   OUTPUT=$(clang-tidy-14 -p build --warnings-as-errors='*' "$file" 2>&1)
+            #   EXIT_CODE=$?
+            #   set -e
+            # 并将判断条件改为 if [ $EXIT_CODE -ne 0 ] || ...
             OUTPUT=$(clang-tidy-14 \
               -p build \
               --warnings-as-errors='*' \
