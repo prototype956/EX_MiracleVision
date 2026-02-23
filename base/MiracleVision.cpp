@@ -72,7 +72,8 @@ int main() {
   // DNN_armor::DNN_Model dnn_model = DNN_armor::DNN_Model(
   //     fmt::format("{}{}", SOURCE_PATH, "/module/armor/yolov8.onnx"), env, session_options);
   // DNN_armor::DNN_Dectect dnn_armor =
-  //     DNN_armor::DNN_Dectect(fmt::format("{}{}", CONFIG_FILE_PATH, "/armor/DNN_armor_config.xml"));
+  //     DNN_armor::DNN_Dectect(fmt::format("{}{}", CONFIG_FILE_PATH,
+  //     "/armor/DNN_armor_config.xml"));
 
   // 角度解算器（用于装甲板）
   angle_solve::solve solution;

@@ -184,7 +184,7 @@ target_include_directories(mv-camera-calibration PUBLIC
 # ----------------------------------------------------------------------------
 # predictor - 预测模块
 # ----------------------------------------------------------------------------
-add_library(mv-predictor SHARED 
+add_library(mv-predictor SHARED
     predictor/tracker.cpp
     predictor/solver.cpp
     predictor/extended_kalman_filter.cpp

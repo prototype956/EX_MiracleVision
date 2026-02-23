@@ -26,7 +26,7 @@
 #include "module/armor/basic_armor.hpp"         // 基础装甲板检测
 // DNN_armor.hpp 暂未在主程序中启用，待重构后引入
 // #include "module/armor/DNN_armor.hpp"
-#include "module/buff/basic_buff.hpp"           // 基础能量机关检测
+#include "module/buff/basic_buff.hpp"  // 基础能量机关检测
 #include "module/buff/new_buff.hpp"  // 新版能量机关检测模块（未在主程序中直接使用）
 #include "module/camera/camera_calibration.hpp"  // 相机标定模块
 // onnx_inferring.hpp 暂未在主程序中启用，待重构后引入
