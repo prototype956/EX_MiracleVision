@@ -1,21 +1,6 @@
 /**
  * @file logger.hpp
- * @brief 统一日志系统（header-only 接口 + logger.cpp 实现）
- *
- * 【为什么封装 spdlog 而不直接用】
- *   spdlog 的全局函数（spdlog::info() 等）共享一个全局 logger，
- *   各模块混用时日志格式不统一，也无法在不改调用点的情况下整体控制级别。
- *   封装后，所有日志都经过 [module] 前缀格式化，可以在 grep 时精确过滤来源模块。
- *
- * 【为什么用单例而不是依赖注入】
- *   日志是横切关注点（cross-cutting concern），每个模块都需要，
- *   如果作为参数传递会导致所有构造函数都多一个 Logger 参数。
- *   单例在这里是合理的，与配置管理器同理。
- *
- * 【为什么 Init 分离出去（不在构造函数里初始化）】
- *   构造函数里无法控制日志目录路径和级别，而这两个参数需要从配置文件读取。
- *   先构造单例（零开销），等 ConfigManager 加载完配置后再调用 Init()，
- *   顺序依赖关系更清晰。未调用 Init 时会懒初始化到默认值，保证不崩溃。
+ * @brief 日志系统（header-only 接口 + logger.cpp 实现）
  *
  * 【快速上手】
  * @code
@@ -60,11 +45,6 @@ class Logger {
 
   /**
    * @brief 初始化日志系统，应在 main() 加载完配置后调用一次
-   *
-   * 为什么要显式 Init 而不是在构造函数里做：
-   *   日志目录和级别来自 ConfigManager，而 ConfigManager 比 Logger 稍晚就绪。
-   *   显式 Init 把这个顺序依赖暴露出来，避免隐式耦合。
-   *   若忘记调用，Log() 会触发懒初始化兜底（使用默认参数），不崩溃但会有警告。
    *
    * @param log_dir      日志文件目录，不存在时自动创建
    * @param level        控制台输出的最低级别（文件始终记录 trace 及以上）
@@ -140,19 +120,16 @@ class Logger {
 }  // namespace mv
 
 // ── 便捷宏 ────────────────────────────────────────────────────────────────────
+//
 // 用宏而不是 inline 模板函数的原因：
 //   fmt::format_string<Args...> 是编译期字符串字面量类型，
 //   通过宏传递时保留了调用点的类型信息（编译期格式检查）。
 //   若改成 inline 函数转发，格式串退化为运行时 std::string，失去编译期检查。
-//   clang-tidy 的 "variadic macro" 警告在这里是误报，已在 CI 配置中豁免。
 //
 // 使用方式：MV_LOG_INFO("模块名", "消息 {}", 变量)
-// NOLINTBEGIN(cppcoreguidelines-macro-usage)
-// NOLINTBEGIN(cppcoreguidelines-macro-usage)
-#define MV_LOG_TRACE(module, ...) mv::Logger::Instance().Trace(module, __VA_ARGS__)
-#define MV_LOG_DEBUG(module, ...) mv::Logger::Instance().Debug(module, __VA_ARGS__)
-#define MV_LOG_INFO(module, ...) mv::Logger::Instance().Info(module, __VA_ARGS__)
-#define MV_LOG_WARN(module, ...) mv::Logger::Instance().Warn(module, __VA_ARGS__)
-#define MV_LOG_ERROR(module, ...) mv::Logger::Instance().Error(module, __VA_ARGS__)
-#define MV_LOG_CRITICAL(module, ...) mv::Logger::Instance().Critical(module, __VA_ARGS__)
-// NOLINTEND(cppcoreguidelines-macro-usage)
+#define MV_LOG_TRACE(module, ...) mv::Logger::Instance().Trace(module, __VA_ARGS__)    // NOLINT(cppcoreguidelines-macro-usage)
+#define MV_LOG_DEBUG(module, ...) mv::Logger::Instance().Debug(module, __VA_ARGS__)    // NOLINT(cppcoreguidelines-macro-usage)
+#define MV_LOG_INFO(module, ...) mv::Logger::Instance().Info(module, __VA_ARGS__)      // NOLINT(cppcoreguidelines-macro-usage)
+#define MV_LOG_WARN(module, ...) mv::Logger::Instance().Warn(module, __VA_ARGS__)      // NOLINT(cppcoreguidelines-macro-usage)
+#define MV_LOG_ERROR(module, ...) mv::Logger::Instance().Error(module, __VA_ARGS__)    // NOLINT(cppcoreguidelines-macro-usage)
+#define MV_LOG_CRITICAL(module, ...) mv::Logger::Instance().Critical(module, __VA_ARGS__)  // NOLINT(cppcoreguidelines-macro-usage)

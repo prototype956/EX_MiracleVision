@@ -1,7 +1,7 @@
 # 阶段一进度记录与问题分析
 
-**分支**: `refactor/core-infra`  
-**日期**: 2026-02-26  
+**分支**: `refactor/core-infra`
+**日期**: 2026-02-26
 **阶段**: 阶段一 —— 基础设施建设（ConfigManager + Logger + 目录重组）
 
 ---
@@ -68,7 +68,7 @@ src/
 - `Subtree(ns_path)` —— 获取子树的只读副本
 - `LoadedFiles()` —— 返回已加载文件列表
 
-**存储模型（Solution A）**：  
+**存储模型（Solution A）**：
 使用 `std::unordered_map<std::string, YAML::Node> namespaces_` 存储，每个命名空间
 持有独立的 `YAML::Node` 树。写入时直接对 map 中存储的节点赋值，规避了
 yaml-cpp 值语义陷阱（详见第二章）。
@@ -137,7 +137,7 @@ calibration: { camera_matrix, distort_coeffs, R/t 外参 }
 
 ### 已采用的解决方案（方案 A）✅
 
-不再用单个 `YAML::Node root_` 存储所有配置，改为用  
+不再用单个 `YAML::Node root_` 存储所有配置，改为用
 `std::unordered_map<std::string, YAML::Node> namespaces_` 按命名空间独立存储。
 
 - 每个 `namespaces_[ns]` 都是独立的 YAML 树的根节点。
