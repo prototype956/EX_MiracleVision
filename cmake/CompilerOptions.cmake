@@ -17,9 +17,11 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 # 编译宏定义
+# 注意：不使用 DEBUG/RELEASE 这类通用宏名，避免与第三方库（如 foxglove schemas.hpp 中
+# Log::LogLevel::DEBUG 枚举项）发生宏替换冲突，改用项目专属前缀 MV_DEBUG/MV_RELEASE
 add_compile_definitions(
-    $<$<CONFIG:Debug>:DEBUG>
-    $<$<CONFIG:Release>:RELEASE>
+    $<$<CONFIG:Debug>:MV_DEBUG>
+    $<$<CONFIG:Release>:MV_RELEASE>
     SPDLOG_FMT_EXTERNAL  # 解决 spdlog 和 fmt 冲突
 )
 
