@@ -1,0 +1,68 @@
+# ============================================================================
+# MiracleVision 全局配置入口
+# 由 ConfigManager 在启动时最先加载此文件
+# 其余模块的配置通过 Load(path, namespace) 按命名空间隔离
+# ============================================================================
+
+# ── 系统级参数 ────────────────────────────────────────────────────────────────
+system:
+  log_dir: "logs"
+  log_level: "debug"   # trace / debug / info / warn / error / critical
+  log_console: true
+
+# ── 相机配置（硬件抽象层使用）────────────────────────────────────────────────
+camera:
+  backend: "mindvision"   # mindvision / opencv / video_file
+  device_index: 0
+  resolution: "1280x1024" # 1280x1024 / 1280x800 / 640x480
+  exposure: 2500
+  # video_file 模式下使用
+  video_path: ""
+
+# ── 串口配置 ──────────────────────────────────────────────────────────────────
+serial:
+  device: "/dev/ttyUSB0"
+  baudrate: 115200
+  show_info: false
+
+# ── 自瞄参数 ──────────────────────────────────────────────────────────────────
+auto_aim:
+  enemy_color: "red"     # red / blue
+
+  tracker:
+    min_detect_count: 5
+    max_temp_lost_count: 15
+    outpost_max_temp_lost_count: 75
+
+  aimer:
+    yaw_offset: -2.0      # degree
+    pitch_offset: 0.0     # degree
+    comming_angle: 60.0   # degree
+    leaving_angle: 20.0   # degree
+    decision_speed: 8.0   # rad/s
+    high_speed_delay: 0.015  # s
+    low_speed_delay: 0.015   # s
+
+  shooter:
+    first_tolerance: 3.0   # 近距离射击容差，degree
+    second_tolerance: 2.0  # 远距离射击容差，degree
+    judge_distance: 2.0    # 距离判断阈值，m
+    auto_fire: true
+
+# ── 相机内参（来自 mv_camera_config_407.xml）─────────────────────────────────
+calibration:
+  camera_matrix: [1764.0906146917000115, 0.0, 644.9007547883753659,
+                  0.0, 1764.2730913327272901, 499.5386779336680547,
+                  0.0, 0.0, 1.0]
+  distort_coeffs: [-0.1105688363057670, 0.0788367597121587,
+                   -0.0006168322635500,  0.0004632768611468,
+                    0.5536762793309852]
+  # 云台到 IMU 的旋转矩阵（暂用单位阵）
+  R_gimbal_to_imu: [1.0, 0.0, 0.0,
+                    0.0, 1.0, 0.0,
+                    0.0, 0.0, 1.0]
+  # 相机到云台的外参（需标定后填入）
+  R_camera_to_gimbal: [1.0, 0.0, 0.0,
+                       0.0, 1.0, 0.0,
+                       0.0, 0.0, 1.0]
+  t_camera_to_gimbal: [0.0, 0.0, 0.0]

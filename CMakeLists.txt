@@ -8,7 +8,7 @@
 
 cmake_minimum_required(VERSION 3.15)
 
-project(MiracleVision 
+project(MiracleVision
     VERSION 2024.2.20
     LANGUAGES CXX
     DESCRIPTION "BJFU RoboMaster 2026 Vision System"
@@ -79,11 +79,11 @@ message(STATUS "")
 # 配置路径定义
 # ============================================================================
 
-set(CONFIG_FILE_PATH "${CMAKE_SOURCE_DIR}/configs" 
+set(CONFIG_FILE_PATH "${CMAKE_SOURCE_DIR}/configs"
     CACHE PATH "Configuration files directory")
-set(SOURCE_PATH "${CMAKE_SOURCE_DIR}" 
+set(SOURCE_PATH "${CMAKE_SOURCE_DIR}"
     CACHE PATH "Source code root directory")
-set(SAVE_FILE_PATH "${CMAKE_SOURCE_DIR}/configs/camera" 
+set(SAVE_FILE_PATH "${CMAKE_SOURCE_DIR}/configs/camera"
     CACHE PATH "Save file directory")
 
 message(STATUS "Path configuration:")
@@ -98,6 +98,10 @@ message(STATUS "")
 
 message(STATUS "Configuring project modules...")
 
+# ── 重构后的核心模块（阶段一起开始生效）──────────────────────────────────────
+add_subdirectory(src)
+
+# ── 旧有模块（重构稳定后逐步替换）────────────────────────────────────────────
 # 工具库
 add_subdirectory(utils)
 
@@ -125,22 +129,22 @@ message(STATUS "")
 
 # 为需要配置文件路径的库添加定义
 if(TARGET mv-basic-buff)
-    target_compile_definitions(mv-basic-buff PRIVATE 
+    target_compile_definitions(mv-basic-buff PRIVATE
         CONFIG_FILE_PATH="${CONFIG_FILE_PATH}")
 endif()
 
 if(TARGET mv-onnx-inferring)
-    target_compile_definitions(mv-onnx-inferring PRIVATE 
+    target_compile_definitions(mv-onnx-inferring PRIVATE
         CONFIG_FILE_PATH="${CONFIG_FILE_PATH}")
 endif()
 
 if(TARGET mv-camera-calibration)
-    target_compile_definitions(mv-camera-calibration PRIVATE 
+    target_compile_definitions(mv-camera-calibration PRIVATE
         SAVE_FILE_PATH="${SAVE_FILE_PATH}")
 endif()
 
 if(TARGET mv-predictor)
-    target_compile_definitions(mv-predictor PRIVATE 
+    target_compile_definitions(mv-predictor PRIVATE
         CONFIG_FILE_PATH="${CONFIG_FILE_PATH}")
 endif()
 
