@@ -1,28 +1,47 @@
 /**
  * @file config.hpp
- * @brief 统一配置管理器 —— 基于 yaml-cpp 的单例，支持多文件合并、类型安全读取、热重载
+ * @brief 统一配置管理器（header-only 单例）
  *
- * 设计原则：
- *  - 所有配置统一由此类管理，禁止在其他模块中直接使用 YAML::LoadFile
- *  - 支持将多个 YAML 文件合并到同一个命名空间（namespace）下
- *  - 线程安全（读多写少，用 shared_mutex 实现读写锁）
+ * 【为什么用单例而不是全局变量或依赖注入】
+ *   比赛代码生命周期简单，配置对象整个程序只需要一份，
+ *   单例比全局变量多一层懒初始化保证（第一次 Instance() 时构造），
+ *   比依赖注入少大量样板代码。若未来要做单测，用 Load() 重置即可。
  *
- * 使用示例：
+ * 【为什么用 yaml-cpp 而不是 nlohmann_json / XML】
+ *   YAML 支持注释，方便调参时在文件里写备注；
+ *   yaml-cpp 已是项目依赖（Foxglove 传递引入），无需额外安装；
+ *   nlohmann_json 不支持注释，XML 层级冗余、解析慢。
+ *
+ * 【为什么要命名空间隔离（Solution A 的根本原因）】
+ *   yaml-cpp 的 YAML::Node 是引用计数句柄，"赋值"只改变句柄指向，
+ *   不修改原树节点。尝试用单棵树 + 递归合并的方案均失败（见 docs 记录）。
+ *   改为每个命名空间独立持有一棵树，写入时通过 dest[key]=val 对已持有的
+ *   树节点赋值，彻底绕开这个陷阱，同时还顺便实现了命名空间隔离。
+ *
+ * 【为什么用 shared_mutex 而不是 mutex】
+ *   配置在运行时几乎只读（写只发生在启动和热重载两个时机），
+ *   shared_mutex 允许多线程并发读，只有 Load/Reload 时独占写，
+ *   读操作零锁争用。
+ *
+ * 【快速上手】
  * @code
  *   auto& cfg = mv::ConfigManager::Instance();
  *
- *   // 加载配置文件
- *   cfg.Load("configs/auto_aim.yaml");                   // 加载到根命名空间
- *   cfg.Load("configs/armor/basic_armor.yaml", "armor"); // 加载到 "armor" 子命名空间
+ *   // 启动时加载（通常在 main 里做一次）
+ *   cfg.Load("configs/vision.yaml");                     // 根命名空间
+ *   cfg.Load("configs/armor/basic_armor.yaml", "armor"); // armor 命名空间
  *
- *   // 读取值（找不到则返回默认值，不抛异常）
+ *   // 读取：找不到时返回默认值，绝不抛异常
  *   auto color  = cfg.Get<std::string>("enemy_color", "red");
  *   auto thresh = cfg.Get<int>("armor.light_thresh", 100);
  *
- *   // 检查键是否存在
+ *   // 读取：必须存在，不存在抛 std::out_of_range
+ *   auto fps = cfg.GetRequired<int>("camera.fps");
+ *
+ *   // 检查 key 是否存在
  *   if (cfg.Has("armor.debug_mode")) { ... }
  *
- *   // 热重载（重新读取所有已加载的文件）
+ *   // 热重载（如接收到 SIGUSR1 时调用）
  *   cfg.Reload();
  * @endcode
  */
@@ -59,25 +78,38 @@ class ConfigManager {
 
   /**
    * @brief 加载一个 YAML 文件，合并到指定命名空间
-   * @param file_path    YAML 文件的绝对/相对路径
-   * @param name_space   命名空间前缀（留空则合并到根节点）
-   *                     文件中的 key "foo" 在 name_space="armor" 下访问路径为 "armor.foo"
-   * @throw YAML::BadFile      文件不存在
-   * @throw YAML::ParserException 解析失败
+   *
+   * 同一命名空间多次 Load 时，后加载的文件会覆盖同名顶层 key，
+   * 嵌套 Map 采用深度合并（保留已有 key）。
+   * 这样可以先加载通用配置，再加载机器特定配置来覆盖少数参数。
+   *
+   * @param file_path    YAML 文件路径（相对路径以进程工作目录为基准）
+   * @param name_space   命名空间前缀。留空则合并到根节点，
+   *                     "armor" 则文件中的 "foo" 通过 "armor.foo" 访问。
+   * @throw YAML::BadFile         文件不存在或无权限读取
+   * @throw YAML::ParserException YAML 语法错误
    */
   void Load(const std::string& file_path, const std::string& name_space = "") {
     std::unique_lock<std::shared_mutex> lock(rw_mutex_);
-    // 方案 A：每个命名空间独立存储一棵 YAML::Node 树，完全绕开 yaml-cpp 树写入陷阱。
-    // 同一命名空间多次 Load 时，新文件的顶层 key 覆盖旧值（Map 合并），非 Map 节点直接替换。
+    // namespaces_[name_space] 若不存在会默认构造出空 Node，
+    // FlatMerge 拿到的是 map 里实际存储的 Node 引用，operator[] 写入永久生效。
+    // 若改为先 Clone 一份再合并，写入结果不会回到 map——yaml-cpp 的值语义陷阱。
     YAML::Node incoming = YAML::LoadFile(file_path);
-    auto& target        = namespaces_[name_space];  // 若不存在则默认构造空 Node
+    auto& target = namespaces_[name_space];
     FlatMerge(target, incoming);
     loaded_files_.emplace_back(file_path, name_space);
   }
 
   /**
-   * @brief 热重载：重新读取所有已加载的文件
-   * @note  重载期间持有写锁，避免在高频路径上调用
+   * @brief 热重载：重新读取所有已加载的文件，刷新内存中的配置
+   *
+   * 先在临时 map 里完整重建，成功后用 move 原子替换 namespaces_。
+   * 这样即使某个文件解析失败（抛异常），原有配置也不受影响。
+   * 若用"先 clear 再 Load"的写法，任何中途失败都会导致配置部分丢失。
+   *
+   * @note 重载期间持有独占写锁，不要在图像处理主循环里调用，
+   *       建议在独立的管理线程中接收信号后调用（如 SIGUSR1）。
+   * @throw YAML::Exception 任意文件解析失败时抛出，原配置保持不变
    */
   void Reload() {
     std::unique_lock<std::shared_mutex> lock(rw_mutex_);
@@ -85,7 +117,7 @@ class ConfigManager {
     std::unordered_map<std::string, YAML::Node> new_namespaces;
     for (const auto& [path, name_space] : loaded_files_) {
       YAML::Node incoming = YAML::LoadFile(path);  // 失败时抛异常，new_namespaces 保持完整
-      auto& target        = new_namespaces[name_space];
+      auto& target = new_namespaces[name_space];
       FlatMerge(target, incoming);
     }
     namespaces_ = std::move(new_namespaces);
@@ -95,7 +127,12 @@ class ConfigManager {
 
   /**
    * @brief 检查一个点分隔的键路径是否存在
+   *
+   * 用于在读取前做条件判断，避免 GetRequired 抛异常。
+   * 底层调用 Resolve()，两阶段查找（命名空间优先 → 根回退）。
+   *
    * @param key_path  点分隔路径，如 "armor.light_thresh"
+   * @return true 路径存在且不为 YAML::Null
    */
   bool Has(const std::string& key_path) const {
     std::shared_lock<std::shared_mutex> lock(rw_mutex_);
@@ -103,10 +140,15 @@ class ConfigManager {
   }
 
   /**
-   * @brief 读取值，找不到时返回 default_val（不抛异常）
+   * @brief 读取值，键不存在或类型转换失败时返回 default_val
+   *
+   * 绝不抛异常——所有错误路径都静默返回默认值。
+   * 这样调用方不需要 try-catch，适合频繁调用的参数读取。
+   * 如果需要发现配置缺失，用 GetRequired 或先 Has 再 Get。
+   *
    * @tparam T           目标类型（int / float / double / std::string / bool 等）
    * @param key_path     点分隔路径，如 "armor.light_thresh"
-   * @param default_val  键不存在或类型转换失败时的默认值
+   * @param default_val  键不存在或类型转换失败时的兜底值
    */
   template <typename T>
   T Get(const std::string& key_path, const T& default_val = T{}) const {
@@ -123,11 +165,16 @@ class ConfigManager {
   }
 
   /**
-   * @brief 读取值，键不存在时抛出异常
+   * @brief 读取值，键不存在时抛出异常（硬依赖参数用此接口）
+   *
+   * 与 Get 的区别：这里的"缺失"是程序逻辑错误，不是正常情况，
+   * 用异常而非默认值可以让错误在启动阶段就暴露，而不是带着错误值运行。
+   * 适用于相机分辨率、通信波特率等启动必须有的参数。
+   *
    * @tparam T        目标类型
    * @param key_path  点分隔路径
    * @throw std::out_of_range   键不存在
-   * @throw std::runtime_error  类型转换失败
+   * @throw std::runtime_error  类型转换失败（如把字符串转 int）
    */
   template <typename T>
   T GetRequired(const std::string& key_path) const {
@@ -145,8 +192,13 @@ class ConfigManager {
   }
 
   /**
-   * @brief 获取一个子命名空间下的完整 YAML 节点（只读副本）
-   * @param ns_path  点分隔路径（留空则返回整棵树）
+   * @brief 获取某命名空间下的完整 YAML 节点（只读副本）
+   *
+   * 返回的是 Clone 副本，外部修改不影响内部存储。
+   * 适合把整个子树传给另一个模块自行解析，避免多次 Get 调用。
+   * 例如把 "armor" 子树传给装甲板检测器，让它自己取参数。
+   *
+   * @param ns_path  点分隔路径（留空则返回所有命名空间合并后的整棵树）
    */
   YAML::Node Subtree(const std::string& ns_path = "") const {
     std::shared_lock<std::shared_mutex> lock(rw_mutex_);
@@ -176,27 +228,38 @@ class ConfigManager {
  private:
   ConfigManager() = default;
 
-  // ── 方案 A 核心：按命名空间独立存储 ──────────────────────────────────────
+  // ── Solution A 存储模型 ───────────────────────────────────────────────────
   //
-  // 存储结构：namespaces_[""] 存放无命名空间的根配置，
-  //           namespaces_["armor"] 存放 Load(path, "armor") 的配置，以此类推。
+  // 用 unordered_map<string, YAML::Node> 而不是单棵 YAML::Node 树的原因：
   //
-  // 查询时通过 key_path 的第一段匹配命名空间：
-  //   "system.log_dir"         → ns=""      subpath="system.log_dir"
-  //   "armor.light_thresh"     → 先查 ns="armor" subpath="light_thresh"，
-  //                              找不到再查 ns="" subpath="armor.light_thresh"
-  //   "auto_aim.tracker.xxx"   → 同上，先查 ns="auto_aim"，再回退到 ns=""
+  // yaml-cpp 的 YAML::Node 是引用计数句柄，行为类似 shared_ptr<NodeData>。
+  // "node = other_node" 让 node 指向 other_node 的数据，不修改原来指向的数据。
+  // "local_copy[key] = val" 只修改 local_copy 指向的树，不影响原始树。
   //
-  // 这样既支持带命名空间的隔离加载，也支持把整个配置加载到根节点后用全路径访问。
+  // 这导致所有"先 Clone/拷贝，再写入，最后赋回"的方案都失效。
+  // 唯一可靠的写入方式是：直接对 map 里存储的 Node 用 operator[] 赋值，
+  // 因为 map 存储的是实际的 Node 对象（不是指针），引用绑定到它上面写入是安全的。
+  //
+  // 查询时的两阶段策略（为什么不直接用全路径在根树上查）：
+  //   假设用户加载了 vision.yaml 到根命名空间，又加载了 basic_armor.yaml 到 "armor" 命名空间。
+  //   访问 "armor.light_thresh" 时：
+  //     阶段1：发现 namespaces_["armor"] 存在，在其中找 "light_thresh" ✓
+  //     阶段2（兜底）：如果用户把 armor 配置直接放在 vision.yaml 里，
+  //                    "armor.light_thresh" 在根命名空间的树上也能找到。
+  //   这样两种组织方式都能工作，调用方不需要关心文件怎么分割。
 
   // ── 内部工具函数 ──────────────────────────────────────────────────────────
 
   /**
-   * @brief 将 from 的顶层 key 逐一写入 dest（利用 yaml-cpp 的 operator[] 就地赋值）
+   * @brief 将 from 的顶层 key 逐一写入 dest（Map 深度合并，非 Map 直接覆盖）
    *
-   * 核心规则：对 dest 本身赋值（dest = x）只改变局部句柄，不修改 dest 指向的树节点。
-   * 只有 dest[key] = x 才能真正把数据写进去。
-   * 因此这里遍历 from 的所有 key，通过 dest[key] = ... 逐一写入，永远不对 dest 整体赋值。
+   * 为什么不直接 dest = from：
+   *   对局部引用赋值只改变引用绑定，不修改 map 里存储的 Node 数据。
+   *   必须用 dest[key] = item.second 对树节点内的字段一一赋值。
+   *
+   * 为什么 dest 用引用而 from 用 const 引用：
+   *   dest 必须是 map 里存储的实际 Node 的引用，才能让写入永久生效。
+   *   from 只读，const ref 避免不必要的拷贝。
    */
   static void FlatMerge(YAML::Node& dest, const YAML::Node& from) {
     if (!from.IsMap()) {
@@ -218,13 +281,20 @@ class ConfigManager {
   }
 
   /**
-   * @brief 递归合并两棵 Map 节点（dest[key] 层面的写入，不对 dest 本身赋值）
-   * @param dest_map  目标 Map 节点（yaml-cpp 按值传参，内部通过 operator[] 就地写入）
+   * @brief 递归合并两棵 Map 节点
+   *
+   * 为什么 dest_map 按值传（而不是引用）：
+   *   yaml-cpp 的 operator[] 会自动通过内部引用计数找到树节点并修改，
+   *   按值传入的 Node 句柄和原始句柄指向同一块数据，写入同样生效。
+   *   若改成引用，clang-tidy 会要求 const ref，但 const Node 上 operator[] 会返回
+   *   Undefined，写不进去。这是 yaml-cpp API 设计的历史遗留问题，按值传是惯用写法。
+   *
+   * @param dest_map  目标 Map 节点句柄（按值传，但写入通过引用计数生效到原树）
    * @param from_map  源 Map 节点（只读）
    */
   // NOLINTBEGIN(bugprone-easily-swappable-parameters)
   static void FlatMergeMap(YAML::Node dest_map, const YAML::Node& from_map) {
-  // NOLINTEND(bugprone-easily-swappable-parameters)
+    // NOLINTEND(bugprone-easily-swappable-parameters)
     for (const auto& item : from_map) {
       auto key = item.first.as<std::string>();
       if (dest_map[key] && dest_map[key].IsMap() && item.second.IsMap()) {
@@ -238,9 +308,11 @@ class ConfigManager {
   /**
    * @brief 解析 key_path，返回对应的 YAML 节点（找不到时返回 Undefined）
    *
-   * 查找策略（两阶段）：
-   *   1. 把 key_path 首段作为命名空间名，在 namespaces_[首段] 中找剩余路径
-   *   2. 若命名空间不存在或路径找不到，回退到 namespaces_[""] 中找完整路径
+   * 两阶段查找而不是直接在根树上查的原因：
+   *   加载到命名空间 "armor" 的配置存在 namespaces_["armor"] 树里，
+   *   根树 namespaces_[""] 里不包含这部分数据。
+   *   只有先检查命名空间树，才能找到 "armor.light_thresh"。
+   *   阶段2 的根回退是为了兼容"所有配置都加载到根"的使用方式。
    */
   YAML::Node Resolve(const std::string& key_path) const {
     auto parts = SplitKey(key_path);
@@ -250,7 +322,7 @@ class ConfigManager {
 
     // 阶段1：把第一段当命名空间，查剩余路径
     const auto& first = parts[0];
-    auto ns_it        = namespaces_.find(first);
+    auto ns_it = namespaces_.find(first);
     if (ns_it != namespaces_.end() && parts.size() > 1) {
       std::vector<std::string> sub_parts(parts.begin() + 1, parts.end());
       YAML::Node result = WalkNode(YAML::Clone(ns_it->second), sub_parts);
@@ -269,7 +341,14 @@ class ConfigManager {
   }
 
   /**
-   * @brief 在一个 Node 副本上按路径数组逐层步进（Clone 后操作，不影响原树）
+   * @brief 在一个 Node 上按路径数组逐层步进，返回目标节点
+   *
+   * 为什么按值接收 node 并立即 move 到局部变量：
+   *   yaml-cpp 的 operator[] 在 const Node 上会返回 Undefined，
+   *   遍历时需要对 cur 做非 const 访问。
+   *   Clone 后按值传入，保证操作的是副本，不影响原始树。
+   *   NOLINT 标注原因：clang-tidy 建议改成 const ref + 内部 Clone，
+   *   但 yaml-cpp 句柄语义下两种写法等价，保持现有写法可读性更高。
    */
   static YAML::Node WalkNode(YAML::Node node, const std::vector<std::string>& parts) {
     YAML::Node cur = std::move(node);
@@ -280,7 +359,7 @@ class ConfigManager {
       bool found = false;
       for (const auto& kv : cur) {
         if (kv.first.as<std::string>() == part) {
-          cur   = kv.second;
+          cur = kv.second;
           found = true;
           break;
         }
@@ -293,7 +372,11 @@ class ConfigManager {
   }
 
   /**
-   * @brief 构建所有命名空间合并后的视图（仅用于 Subtree() 返回整棵树时）
+   * @brief 构建所有命名空间合并后的视图（仅供 Subtree() 返回整棵树时使用）
+   *
+   * 为什么不直接存一棵合并树：
+   *   Load 时需要按命名空间独立写入（Solution A 的核心），
+   *   合并视图只在 Subtree() 这个低频调用时才需要，临时构建比维护双份数据更简单。
    */
   YAML::Node MergedView() const {
     YAML::Node view;
@@ -314,7 +397,11 @@ class ConfigManager {
   }
 
   /**
-   * @brief 在视图 Node 上用路径数组步进（供 Subtree 使用）
+   * @brief 在视图 Node 上用路径数组步进（供 Subtree 使用，与 WalkNode 同理）
+   *
+   * 独立成函数而不复用 WalkNode 的原因：
+   *   Subtree 的入口参数是 MergedView() 返回的临时对象，
+   *   单独命名可以在调用点表达"在视图上查"的语义，区别于"在存储树上查"。
    */
   static YAML::Node ResolveInView(YAML::Node view, const std::vector<std::string>& parts) {
     return WalkNode(std::move(view), parts);
