@@ -11,8 +11,8 @@ add_subdirectory(core)
 # 冒烟测试可执行文件
 add_subdirectory(app)
 
-# 阶段二：硬件抽象层（HAL）—— 待实现
-# add_subdirectory(hal)
+# 阶段二：硬件抽象层（HAL）
+add_subdirectory(hal)
 
 # 阶段三：接口层 + 工厂系统 —— 待实现
 # add_subdirectory(interfaces)
