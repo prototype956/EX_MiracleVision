@@ -16,9 +16,9 @@
 
 #include "opencv_camera.hpp"
 
-#include <opencv2/videoio.hpp>
-
 #include "../../core/logger.hpp"
+
+#include <opencv2/videoio.hpp>
 
 namespace mv::hal {
 
@@ -55,21 +55,18 @@ bool OpenCvCamera::Open(const YAML::Node& config) {
 
   // source 字段：先尝试解析为 int（设备索引），否则当字符串（路径/URL）
   const YAML::Node src_node = config["source"];
-  bool opened = false;
 
   if (src_node && src_node.IsScalar()) {
     try {
       const int idx = src_node.as<int>();
-      opened = impl_->cap.open(idx, cv::CAP_V4L2);
-      if (!opened) {
+      if (!impl_->cap.open(idx, cv::CAP_V4L2)) {
         MV_LOG_ERROR("HAL.Camera.OpenCV", "failed to open device index {}", idx);
         return false;
       }
       MV_LOG_INFO("HAL.Camera.OpenCV", "opened device index {}", idx);
     } catch (const YAML::BadConversion&) {
-      const std::string path = src_node.as<std::string>();
-      opened = impl_->cap.open(path);
-      if (!opened) {
+      const auto path = src_node.as<std::string>();
+      if (!impl_->cap.open(path)) {
         MV_LOG_ERROR("HAL.Camera.OpenCV", "failed to open '{}'", path);
         return false;
       }

@@ -27,16 +27,16 @@
 
 #include "uart_serial.hpp"
 
-#include <fcntl.h>
-#include <termios.h>
-#include <unistd.h>
+#include "../../core/logger.hpp"
 
 #include <cerrno>
 #include <cstring>
 #include <string>
 #include <vector>
 
-#include "../../core/logger.hpp"
+#include <fcntl.h>
+#include <termios.h>
+#include <unistd.h>
 
 namespace mv::hal {
 
@@ -50,18 +50,26 @@ namespace {
  * @brief 将整数波特率转换为 termios speed_t 宏
  *
  * 只支持机器人常用的几档，未知值降级到 B115200 并打印警告。
- * 用 map 而不是 switch：未来添加新速率只改数据，不改逻辑。
+ * termios 只接受 Bxxx 宏，不能直接传整数，需要这层映射。
  */
 speed_t BaudrateToTermios(int baudrate) {
   switch (baudrate) {
-    case 9600:   return B9600;
-    case 19200:  return B19200;
-    case 38400:  return B38400;
-    case 57600:  return B57600;
-    case 115200: return B115200;
-    case 230400: return B230400;
-    case 460800: return B460800;
-    case 921600: return B921600;
+    case 9600:
+      return B9600;
+    case 19200:
+      return B19200;
+    case 38400:
+      return B38400;
+    case 57600:
+      return B57600;
+    case 115200:
+      return B115200;
+    case 230400:
+      return B230400;
+    case 460800:
+      return B460800;
+    case 921600:
+      return B921600;
     default:
       MV_LOG_WARN("HAL.Serial.UART", "unsupported baudrate {}, falling back to 115200", baudrate);
       return B115200;
@@ -145,7 +153,7 @@ bool UartSerial::Open(const YAML::Node& config) {
   }
 
   // 配置 termios（原始模式，非阻塞读）
-  struct termios tio{};
+  struct termios tio {};
   if (tcgetattr(fd, &tio) != 0) {
     MV_LOG_ERROR("HAL.Serial.UART", "tcgetattr failed: {}", strerror(errno));
     close(fd);
@@ -165,7 +173,7 @@ bool UartSerial::Open(const YAML::Node& config) {
 
   // 非阻塞 read：VTIME=0, VMIN=0 → read() 立即返回（可能读到 0 字节）
   tio.c_cc[VTIME] = 0;
-  tio.c_cc[VMIN]  = 0;
+  tio.c_cc[VMIN] = 0;
 
   tcflush(fd, TCIOFLUSH);
   if (tcsetattr(fd, TCSANOW, &tio) != 0) {

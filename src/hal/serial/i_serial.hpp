@@ -38,7 +38,17 @@ namespace mv::hal {
  */
 class ISerial {
  public:
+  ISerial() = default;
   virtual ~ISerial() = default;
+
+  // C++ Core Guidelines C.67：多态基类拷贝禁止，移动降为 protected，
+  // 防止对象切片，同时保留派生类的移动能力。
+  ISerial(const ISerial&) = delete;
+  ISerial& operator=(const ISerial&) = delete;
+
+ protected:
+  ISerial(ISerial&&) = default;
+  ISerial& operator=(ISerial&&) = default;
 
   /**
    * @brief 打开串口

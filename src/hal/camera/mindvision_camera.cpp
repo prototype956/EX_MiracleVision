@@ -51,12 +51,12 @@ struct MindVisionCamera::Impl {
   int h_camera{0};
   unsigned char* rgb_buffer{nullptr};
 
-  tSdkCameraDevInfo  dev_info{};
+  tSdkCameraDevInfo dev_info{};
   tSdkCameraCapbility capability{};
-  tSdkFrameHead       frame_head{};
+  tSdkFrameHead frame_head{};
   tSdkImageResolution resolution{};
-  BYTE*               raw_buffer{nullptr};
-  IplImage*           ipl_image{nullptr};
+  BYTE* raw_buffer{nullptr};
+  IplImage* ipl_image{nullptr};
 #endif
 };
 
@@ -92,22 +92,22 @@ bool MindVisionCamera::Open(const YAML::Node& config) {
 
   // 从 YAML 读取参数，提供合理默认值（防止配置文件缺字段时崩溃）
   impl_->exposure_us = config["exposure_us"].as<int>(5000);
-  impl_->width       = config["resolution"]["width"].as<int>(1280);
-  impl_->height      = config["resolution"]["height"].as<int>(800);
-  impl_->channel     = config["channel"].as<int>(3);
+  impl_->width = config["resolution"]["width"].as<int>(1280);
+  impl_->height = config["resolution"]["height"].as<int>(800);
+  impl_->channel = config["channel"].as<int>(3);
 
   CameraSdkInit(1);
 
   int camera_count = 1;
   int status = CameraEnumerateDevice(&impl_->dev_info, &camera_count);
   if (camera_count == 0) {
-    MV_LOG_ERROR("MindVisionCamera: no device found (CameraEnumerateDevice returned {})", status);
+    MV_LOG_ERROR("HAL.Camera.MV", "no device found (CameraEnumerateDevice returned {})", status);
     return false;
   }
 
   status = CameraInit(&impl_->dev_info, -1, -1, &impl_->h_camera);
   if (status != CAMERA_STATUS_SUCCESS) {
-    MV_LOG_ERROR("MindVisionCamera: CameraInit failed, status={}", status);
+    MV_LOG_ERROR("HAL.Camera.MV", "CameraInit failed, status={}", status);
     return false;
   }
 
@@ -117,17 +117,18 @@ bool MindVisionCamera::Open(const YAML::Node& config) {
   const std::size_t buf_size =
       static_cast<std::size_t>(impl_->capability.sResolutionRange.iHeightMax) *
       static_cast<std::size_t>(impl_->capability.sResolutionRange.iWidthMax) * 3;
-  impl_->rgb_buffer = static_cast<unsigned char*>(malloc(buf_size));  // NOLINT(cppcoreguidelines-no-malloc)
+  impl_->rgb_buffer =
+      static_cast<unsigned char*>(malloc(buf_size));  // NOLINT(cppcoreguidelines-no-malloc)
   if (impl_->rgb_buffer == nullptr) {
-    MV_LOG_ERROR("MindVisionCamera: failed to allocate RGB buffer ({} bytes)", buf_size);
+    MV_LOG_ERROR("HAL.Camera.MV", "failed to allocate RGB buffer ({} bytes)", buf_size);
     CameraUnInit(impl_->h_camera);
     return false;
   }
 
   // 设置分辨率
   CameraGetImageResolution(impl_->h_camera, &impl_->resolution);
-  impl_->resolution.iIndex     = 0xFF;  // 0xFF = 自定义分辨率
-  impl_->resolution.iWidthFOV  = impl_->width;
+  impl_->resolution.iIndex = 0xFF;  // 0xFF = 自定义分辨率
+  impl_->resolution.iWidthFOV = impl_->width;
   impl_->resolution.iHeightFOV = impl_->height;
   CameraSetImageResolution(impl_->h_camera, &impl_->resolution);
 
@@ -138,7 +139,7 @@ bool MindVisionCamera::Open(const YAML::Node& config) {
   CameraPlay(impl_->h_camera);
 
   impl_->is_open = true;
-  MV_LOG_INFO("MindVisionCamera: opened ({}x{}, exposure={}us)",
+  MV_LOG_INFO("HAL.Camera.MV", "opened ({}x{}, exposure={}us)",
               impl_->width, impl_->height, impl_->exposure_us);
   return true;
 #endif
@@ -162,7 +163,7 @@ void MindVisionCamera::Close() {
   }
 
   impl_->is_open = false;
-  MV_LOG_INFO("MindVisionCamera: closed");
+  MV_LOG_INFO("HAL.Camera.MV", "closed");
 #endif
 }
 
@@ -172,17 +173,17 @@ bool MindVisionCamera::Grab(cv::Mat& frame) {
   return false;
 #else
   if (!impl_->is_open) {
-    MV_LOG_WARN("MindVisionCamera::Grab called on closed camera");
+    MV_LOG_WARN("HAL.Camera.MV", "Grab called on closed camera");
     return false;
   }
 
   // 超时设为 1000ms：比正常帧周期长，但不会让调用方卡太久
   constexpr int kTimeoutMs = 1000;
-  const int status = CameraGetImageBuffer(
-      impl_->h_camera, &impl_->frame_head, &impl_->raw_buffer, kTimeoutMs);
+  const int status =
+      CameraGetImageBuffer(impl_->h_camera, &impl_->frame_head, &impl_->raw_buffer, kTimeoutMs);
 
   if (status != CAMERA_STATUS_SUCCESS) {
-    MV_LOG_WARN("MindVisionCamera: CameraGetImageBuffer timeout/error, status={}", status);
+    MV_LOG_WARN("HAL.Camera.MV", "CameraGetImageBuffer timeout/error, status={}", status);
     return false;
   }
 
@@ -194,10 +195,8 @@ bool MindVisionCamera::Grab(cv::Mat& frame) {
     cvReleaseImageHeader(&impl_->ipl_image);
   }
   impl_->ipl_image = cvCreateImageHeader(
-      cvSize(impl_->frame_head.iWidth, impl_->frame_head.iHeight),
-      IPL_DEPTH_8U, impl_->channel);
-  cvSetData(impl_->ipl_image, impl_->rgb_buffer,
-            impl_->frame_head.iWidth * impl_->channel);
+      cvSize(impl_->frame_head.iWidth, impl_->frame_head.iHeight), IPL_DEPTH_8U, impl_->channel);
+  cvSetData(impl_->ipl_image, impl_->rgb_buffer, impl_->frame_head.iWidth * impl_->channel);
 
   // 深拷贝到 cv::Mat，之后立即归还 DMA buffer
   // 深拷贝原因见文件头注释：尽快释放 SDK buffer 防止丢帧

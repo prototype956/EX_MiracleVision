@@ -37,7 +37,19 @@ namespace mv::hal {
  */
 class ICamera {
  public:
+  ICamera() = default;
   virtual ~ICamera() = default;
+
+  // C++ Core Guidelines C.67：多态基类应将拷贝/移动设为 protected 或 delete，
+  // 防止通过基类指针发生对象切片（object slicing）。
+  // 用 protected + default 而不是全部 delete：
+  // 保留派生类自身的移动能力（用于存入容器），同时禁止跨类型切片。
+  ICamera(const ICamera&) = delete;
+  ICamera& operator=(const ICamera&) = delete;
+
+ protected:
+  ICamera(ICamera&&) = default;
+  ICamera& operator=(ICamera&&) = default;
 
   /**
    * @brief 打开并初始化相机
