@@ -29,8 +29,9 @@
  */
 #pragma once
 
-#include <memory>
 #include "i_serial.hpp"
+
+#include <memory>
 
 namespace mv::hal {
 

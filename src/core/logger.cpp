@@ -2,10 +2,6 @@
  * @file logger.cpp
  * @brief Logger::Init() 的具体实现
  *
- * 分离到 .cpp 的原因：
- *   spdlog 的 sink 头文件（basic_file_sink.h / stdout_color_sinks.h）
- *   包含大量模板实现，放在 .hpp 里会导致每个 include logger.hpp 的翻译单元
- *   都编译一遍这些模板，显著增加编译时间。分离后只有 logger.cpp 编译一次。
  */
 #include "logger.hpp"
 
@@ -29,7 +25,7 @@ void Logger::Init(const std::string& log_dir, spdlog::level::level_enum level, b
   std::filesystem::create_directories(log_dir);
 
   // 用时间戳命名日志文件，而不是用固定名字（如 app.log）：
-  // 固定名字在多次启动时会覆盖上次日志，时间戳命名保留所有历史记录，方便复盘问题
+  // 时间戳命名保留所有历史记录，方便复盘问题
   auto file_name =
       fmt::format("{}/{:%Y-%m-%d_%H-%M-%S}.log", log_dir, std::chrono::system_clock::now());
 

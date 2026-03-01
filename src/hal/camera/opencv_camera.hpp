@@ -23,8 +23,9 @@
  */
 #pragma once
 
-#include <memory>
 #include "i_camera.hpp"
+
+#include <memory>
 
 namespace mv::hal {
 
