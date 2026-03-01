@@ -54,23 +54,23 @@ bool OpenCvCamera::Open(const YAML::Node& config) {
   }
 
   // source 字段：先尝试解析为 int（设备索引），否则当字符串（路径/URL）
-  const YAML::Node src_node = config["source"];
+  const YAML::Node SRC_NODE = config["source"];
 
-  if (src_node && src_node.IsScalar()) {
+  if (SRC_NODE && SRC_NODE.IsScalar()) {
     try {
-      const int idx = src_node.as<int>();
-      if (!impl_->cap.open(idx, cv::CAP_V4L2)) {
-        MV_LOG_ERROR("HAL.Camera.OpenCV", "failed to open device index {}", idx);
+      const int DEVICE_IDX = SRC_NODE.as<int>();
+      if (!impl_->cap.open(DEVICE_IDX, cv::CAP_V4L2)) {
+        MV_LOG_ERROR("HAL.Camera.OpenCV", "failed to open device index {}", DEVICE_IDX);
         return false;
       }
-      MV_LOG_INFO("HAL.Camera.OpenCV", "opened device index {}", idx);
+      MV_LOG_INFO("HAL.Camera.OpenCV", "opened device index {}", DEVICE_IDX);
     } catch (const YAML::BadConversion&) {
-      const auto path = src_node.as<std::string>();
-      if (!impl_->cap.open(path)) {
-        MV_LOG_ERROR("HAL.Camera.OpenCV", "failed to open '{}'", path);
+      const auto DEVICE_PATH = SRC_NODE.as<std::string>();
+      if (!impl_->cap.open(DEVICE_PATH)) {
+        MV_LOG_ERROR("HAL.Camera.OpenCV", "failed to open '{}'", DEVICE_PATH);
         return false;
       }
-      MV_LOG_INFO("HAL.Camera.OpenCV", "opened '{}'", path);
+      MV_LOG_INFO("HAL.Camera.OpenCV", "opened '{}'", DEVICE_PATH);
     }
   } else {
     MV_LOG_ERROR("HAL.Camera.OpenCV", "missing or invalid 'source' field in config");
@@ -78,14 +78,14 @@ bool OpenCvCamera::Open(const YAML::Node& config) {
   }
 
   // 设置分辨率和帧率（仅作 hint，硬件可能调整到最近支持的值）
-  if (const int width = config["width"].as<int>(0); width > 0) {
-    impl_->cap.set(cv::CAP_PROP_FRAME_WIDTH, width);
+  if (const int FRAME_WIDTH = config["width"].as<int>(0); FRAME_WIDTH > 0) {
+    impl_->cap.set(cv::CAP_PROP_FRAME_WIDTH, FRAME_WIDTH);
   }
-  if (const int height = config["height"].as<int>(0); height > 0) {
-    impl_->cap.set(cv::CAP_PROP_FRAME_HEIGHT, height);
+  if (const int FRAME_HEIGHT = config["height"].as<int>(0); FRAME_HEIGHT > 0) {
+    impl_->cap.set(cv::CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT);
   }
-  if (const int fps = config["fps"].as<int>(0); fps > 0) {
-    impl_->cap.set(cv::CAP_PROP_FPS, fps);
+  if (const int TARGET_FPS = config["fps"].as<int>(0); TARGET_FPS > 0) {
+    impl_->cap.set(cv::CAP_PROP_FPS, TARGET_FPS);
   }
 
   // 减少 V4L2 帧缓冲数，获取最新帧（原因见文件头注释）

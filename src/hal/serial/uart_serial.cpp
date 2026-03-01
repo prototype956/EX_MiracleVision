@@ -82,13 +82,14 @@ speed_t BaudrateToTermios(int baudrate) {
 int OpenDevice(const std::string& path) {
   // O_NOCTTY：不让串口成为进程的控制终端（避免串口发来的特殊字符杀死进程）
   // O_NDELAY：非阻塞 open（设备离线时不挂起）
-  const int raw_fd = open(path.c_str(), O_RDWR | O_NOCTTY | O_NDELAY);
-  if (raw_fd == -1) {
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) — POSIX open() 是 C vararg，无法替换
+  const int RAW_FD = open(path.c_str(), O_RDWR | O_NOCTTY | O_NDELAY);
+  if (RAW_FD == -1) {
     MV_LOG_WARN("HAL.Serial.UART", "cannot open '{}': {}", path, strerror(errno));
   } else {
     MV_LOG_INFO("HAL.Serial.UART", "opened '{}'", path);
   }
-  return raw_fd;
+  return RAW_FD;
 }
 
 }  // namespace
@@ -140,30 +141,30 @@ bool UartSerial::Open(const YAML::Node& config) {
   }
 
   // 依次尝试打开
-  int fd = -1;
+  int port_fd = -1;
   for (const auto& path : devices) {
-    fd = OpenDevice(path);
-    if (fd != -1) {
+    port_fd = OpenDevice(path);
+    if (port_fd != -1) {
       break;
     }
   }
-  if (fd == -1) {
+  if (port_fd == -1) {
     MV_LOG_ERROR("HAL.Serial.UART", "all device paths failed");
     return false;
   }
 
   // 配置 termios（原始模式，非阻塞读）
   struct termios tio {};
-  if (tcgetattr(fd, &tio) != 0) {
+  if (tcgetattr(port_fd, &tio) != 0) {
     MV_LOG_ERROR("HAL.Serial.UART", "tcgetattr failed: {}", strerror(errno));
-    close(fd);
+    close(port_fd);
     return false;
   }
 
-  const int baudrate = config["baudrate"].as<int>(115200);
-  const speed_t baud_speed = BaudrateToTermios(baudrate);
-  cfsetispeed(&tio, baud_speed);
-  cfsetospeed(&tio, baud_speed);
+  const int BAUDRATE = config["baudrate"].as<int>(115200);
+  const speed_t BAUD_SPEED = BaudrateToTermios(BAUDRATE);
+  cfsetispeed(&tio, BAUD_SPEED);
+  cfsetospeed(&tio, BAUD_SPEED);
 
   // 原始模式：禁用所有处理
   cfmakeraw(&tio);
@@ -175,16 +176,16 @@ bool UartSerial::Open(const YAML::Node& config) {
   tio.c_cc[VTIME] = 0;
   tio.c_cc[VMIN] = 0;
 
-  tcflush(fd, TCIOFLUSH);
-  if (tcsetattr(fd, TCSANOW, &tio) != 0) {
+  tcflush(port_fd, TCIOFLUSH);
+  if (tcsetattr(port_fd, TCSANOW, &tio) != 0) {
     MV_LOG_ERROR("HAL.Serial.UART", "tcsetattr failed: {}", strerror(errno));
-    close(fd);
+    close(port_fd);
     return false;
   }
 
-  impl_->fd = fd;
+  impl_->fd = port_fd;
   impl_->is_open = true;
-  MV_LOG_INFO("HAL.Serial.UART", "configured at {} baud", baudrate);
+  MV_LOG_INFO("HAL.Serial.UART", "configured at {} baud", BAUDRATE);
   return true;
 }
 
@@ -207,12 +208,12 @@ bool UartSerial::Send(const uint8_t* data, std::size_t len) {
   std::size_t total_written = 0;
   while (total_written < len) {
     // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-    const ssize_t bytes_written = write(impl_->fd, data + total_written, len - total_written);
-    if (bytes_written <= 0) {
+    const ssize_t BYTES_WRITTEN = write(impl_->fd, data + total_written, len - total_written);
+    if (BYTES_WRITTEN <= 0) {
       MV_LOG_ERROR("HAL.Serial.UART", "write error: {}", strerror(errno));
       return false;
     }
-    total_written += static_cast<std::size_t>(bytes_written);
+    total_written += static_cast<std::size_t>(BYTES_WRITTEN);
   }
   return true;
 }
@@ -223,8 +224,9 @@ bool UartSerial::Recv(uint8_t* buf, std::size_t len, std::size_t& received) {
     return false;
   }
 
-  const ssize_t bytes_read = read(impl_->fd, buf, len);
-  if (bytes_read < 0) {
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) — POSIX read() 是 C vararg，无法替换
+  const ssize_t BYTES_READ = read(impl_->fd, buf, len);
+  if (BYTES_READ < 0) {
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
       // 非阻塞模式：当前没有数据，不算错误
       received = 0;
@@ -235,7 +237,7 @@ bool UartSerial::Recv(uint8_t* buf, std::size_t len, std::size_t& received) {
     return false;
   }
 
-  received = static_cast<std::size_t>(bytes_read);
+  received = static_cast<std::size_t>(BYTES_READ);
   return received > 0;
 }
 
