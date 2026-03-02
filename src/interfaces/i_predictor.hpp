@@ -64,10 +64,9 @@ class IPredictor {
    * @return GimbalControl  tracking=true 时包含有效的 yaw/pitch；
    *                        tracking=false 时上位机应保持当前姿态
    */
-  [[nodiscard]] virtual GimbalControl Predict(
-      const std::vector<Detection>& detections,
-      std::chrono::steady_clock::time_point timestamp,
-      ArmorColor enemy_color) = 0;
+  [[nodiscard]] virtual GimbalControl Predict(const std::vector<Detection>& detections,
+                                              std::chrono::steady_clock::time_point timestamp,
+                                              ArmorColor enemy_color) = 0;
 
   /**
    * @brief 获取当前跟踪目标的详细状态（用于 Foxglove 可视化）

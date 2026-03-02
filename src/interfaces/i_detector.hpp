@@ -71,7 +71,7 @@ class IDetector {
    *   - is_solved = false，xyz_in_gimbal = {0,0,0}（需 ISolver 填充）。
    */
   [[nodiscard]] virtual std::vector<Detection> Detect(const cv::Mat& frame,
-                                                       ArmorColor enemy_color) = 0;
+                                                      ArmorColor enemy_color) = 0;
 
   /** @return 检测器是否已完成初始化 */
   [[nodiscard]] virtual bool IsInitialized() const noexcept = 0;
