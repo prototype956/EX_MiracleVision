@@ -43,6 +43,12 @@ Diagnostics:
   # 取消未使用参数的警告（对于接口实现很常见）
   UnusedIncludes: Strict
   MissingIncludes: Strict
+  # clangd 使用 clang 前端解析 GCC libstdc++ 的 C++20 <chrono> 头文件时，
+  # hh_mm_ss::_S_fractional_width 是 consteval 函数，但 clang 认为其不满足
+  # 常量表达式要求（GCC 自己的扩展），在 g++ 实际编译时不存在此问题。
+  # 用 Suppress 按诊断名屏蔽该误报。
+  Suppress:
+    - invalid_consteval_call
   # 排除第三方库和构建目录的诊断
   Includes:
     IgnoreHeader:
