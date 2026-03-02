@@ -69,8 +69,18 @@ class IPredictor {
                                               ArmorColor enemy_color) = 0;
 
   /**
-   * @brief 获取当前跟踪目标的详细状态（用于 Foxglove 可视化）
-   * @return TrackTarget 状态快照
+   * @brief 获取当前跟踪目标的详细状态
+   *
+   * TrackTarget 有两类消费者：
+   *   1. **Voter**（待实现）：读取 tracker_state / is_tracking / number / color，
+   *      结合击打优先级和冷却时间决策是否允许开火，输出 fire 信号给 Shooter；
+   *   2. **Foxglove 可视化**：读取 position / velocity / yaw_predicted 等字段，
+   *      在上位机 UI 中绘制跟踪轨迹和预测落点，辅助调试。
+   *
+   * @note Voter 和 Shooter 模块尚未实现（TODO: Stage 3 后续 / Stage 4 Pipeline），
+   *       实现时应从此接口取数据，而不是重新在 Pipeline 中传递 Detection 列表。
+   *
+   * @return TrackTarget 状态快照（调用方应拷贝而非持有引用，预测器可能在下一帧更新）
    */
   [[nodiscard]] virtual TrackTarget GetTrackTarget() const = 0;
 

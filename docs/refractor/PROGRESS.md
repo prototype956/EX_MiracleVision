@@ -201,5 +201,6 @@ src/fsm/
 |------|------|--------|
 | `src/app/smoke_test.cpp` | `main()` 认知复杂度超阈值（47 > 25），`files.size() >= 1` 应为 `!files.empty()` | 低（测试代码） |
 | `module/foxglove_publisher/foxglove_publisher.cpp` | `schemas.hpp` 类型在 `namespace foxglove::schemas` 内失效，编译报错 | 中（旧代码，不影响新模块） |
-| `src/interfaces/types.hpp` | `Detection` 中的 `cv::Mat pattern` 字段暂未添加（旧 predictor::Armor 有），待 Stage 3 具体实现时按需补充 | 低 |
-| `src/factory/` | 尚无对应的具体实现（`BasicArmorDetector` 等），工厂注册表为空，`Create()` 目前只能用 Mock | 高（Stage 3 下阶段完成）|
+| `src/interfaces/types.hpp` | `Detection` 中的 `cv::Mat pattern` 字段暂未添加（旧 predictor::Armor 有），待具体实现时按需补充 | 低 |
+| `src/factory/` | 尚无对应的具体实现（`BasicArmorDetector` 等），工厂注册表为空，`Create()` 目前只能用 Mock | 高（Stage 3 后续完成）|
+| `src/interfaces/` | **Voter / Shooter 接口未实现**：`IPredictor::GetTrackTarget()` 的返回值需要传给 Voter（开火决策）和 Shooter（弹道补偿 + 串口编码），目前 `TrackTarget` 只接入了 Foxglove 可视化。实现时建议新增 `IVoter` / `IShooter` 接口并通过工厂注册，数据来源为 `GetTrackTarget()` 而非重复传递 `Detection`。| 高（Stage 4 Pipeline 时一并实现）|

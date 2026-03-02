@@ -102,13 +102,28 @@ if (ctrl.fire) { /* 请求开火 */ }
 
 ### TrackTarget（跟踪状态）
 
-仅用于 Foxglove 可视化调试，不上串口。
+`GetTrackTarget()` 返回的状态有两类消费者，**目前只实现了可视化，Voter/Shooter 尚待实现**：
+
+| 消费者 | 读取字段 | 用途 | 状态 |
+|--------|----------|------|------|
+| **Voter**（待实现）| `is_tracking` / `tracker_state` / `number` / `color` | 结合击打优先级和冷却时间，决策是否允许开火，输出 `fire` 信号给 Shooter | ❌ 未实现 |
+| **Shooter**（待实现）| `yaw_predicted` / `pitch_predicted` / `distance` | 接收 Voter 的开火指令，叠加弹道补偿后编码写入串口 | ❌ 未实现 |
+| **Foxglove 可视化** | `position` / `velocity` / `yaw_predicted` / `tracker_state` | 上位机 UI 绘制跟踪轨迹和预测落点 | ✅ 可接入 |
 
 ```cpp
 mv::TrackTarget target = predictor->GetTrackTarget();
-// target.tracker_state: "lost" / "detecting" / "tracking" / "temp_lost"
-// target.position / target.velocity: Eigen::Vector3d（m, m/s）
+// target.tracker_state : "lost" / "detecting" / "tracking" / "temp_lost"
+// target.is_tracking   : bool
+// target.position      : Eigen::Vector3d（云台坐标系，m）
+// target.velocity      : Eigen::Vector3d（m/s）
+// target.yaw_predicted : rad（已含飞行时间补偿）
+
+// TODO: 传给 Voter 决策开火
+// TODO: Voter 输出 fire=true 时交给 Shooter 编码写串口
 ```
+
+> **实现提示**：Voter 和 Shooter 应作为独立接口（`IVoter` / `IShooter`）实现，
+> 通过工厂注册，数据来源是 `GetTrackTarget()` 而不是重新传递 `Detection` 列表。
 
 ---
 
