@@ -1,6 +1,6 @@
 # 重构进展追踪
 
-> 最后更新：2026-03-01
+> 最后更新：2026-03-02
 > 分支：`refactor/core-infra`
 
 ---
@@ -10,7 +10,7 @@
 ```
 Stage 1 ─ 基础设施          ✅ 完成
 Stage 2 ─ 硬件抽象层 (HAL)  ✅ 完成
-Stage 3 ─ 接口层 + 工厂      🔲 待开始
+Stage 3 ─ 接口层 + 工厂      ✅ 完成
 Stage 4 ─ 线程 Pipeline      🔲 待开始
 Stage 5 ─ 状态机 (FSM)       🔲 待开始
 Stage 6 ─ 替换旧模块         🔲 待开始
@@ -90,30 +90,59 @@ Stage 1 冒烟测试：15 / 15 仍全部通过 ✓
 
 ---
 
-## Stage 3：接口层 + 工厂系统 🔲
+## Stage 3：接口层 + 工厂系统 ✅
 
-**计划**：下一阶段
+**提交**：`8ee585a`（初始实现） / `87f2ad2`（factory lint 修复） / `6f9ce88`（枚举命名修复）
 
-### 目标
+### 交付物
+
+| 文件 | 说明 |
+|------|------|
+| `src/interfaces/types.hpp` | 跨层共享数据类型：`ArmorColor/Type/Number`、`Detection`、`GimbalControl`、`TrackTarget` |
+| `src/interfaces/i_detector.hpp` | `IDetector` 纯虚接口（帧 → `Detection` 列表） |
+| `src/interfaces/i_solver.hpp` | `ISolver` 纯虚接口（角点 → 3D 位姿，就地填充） |
+| `src/interfaces/i_predictor.hpp` | `IPredictor` 纯虚接口（跨帧跟踪 → `GimbalControl`） |
+| `src/interfaces/CMakeLists.txt` | `mv-interfaces` INTERFACE 库 |
+| `src/factory/factory.hpp` | `Factory<Base>` 模板注册表 + `MV_REGISTER_*` 宏 |
+| `src/factory/CMakeLists.txt` | `mv-factory` INTERFACE 库 |
+| `docs/refractor/interfaces/INTERFACES_USAGE.md` | 使用指南 |
+
+### 关键设计决策
+
+- **三层分离**：`IDetector`（2D）→ `ISolver`（3D，就地填充）→ `IPredictor`（跨帧预测）各自独立接口，可替换任意一层而不影响其他层。
+- **统一数据类型**：旧代码各模块自定义结构体（`basic_armor::Armor_Data`、`predictor::Armor`...），新设计用 `types.hpp` 统一约定，接口只传递这些类型。
+- **Meyers Singleton 注册表**：`Factory<Base>::Registry()` 中的 `static unordered_map` 第一次调用时构造，绕开静态初始化顺序问题（SIOF）。
+- **全局静态触发注册**：`MV_REGISTER_*` 宏在 `.cpp` 文件作用域展开，利用全局静态变量在 `main()` 之前初始化的特性完成注册，`main()` 只调用 `Create()`，新增实现无需修改 `main`。
+- **枚举常量 UPPER_CASE**：遵守 `.clang-tidy` 中 `readability-identifier-naming.EnumConstantCase = UPPER_CASE`，与 clang-tidy 检查对齐。
+- **INTERFACE 库**：接口和工厂全为纯头文件，不产生 `.a/.so`，只传播 include 路径和依赖，避免链接无用符号。
+
+### 与旧代码对比
+
+| 方面 | 旧代码 | 新设计 |
+|------|--------|--------|
+| 切换检测算法 | 修改 main.cpp 的 if-else | 改 YAML `detector.type` |
+| 新增实现 | 修改 main.cpp + 适配新接口 | 在 `.cpp` 添加 `MV_REGISTER_DETECTOR` |
+| 跨层数据传递 | 各模块自定义结构体，互相 include | 统一 `Detection` / `GimbalControl` |
+| 单元测试 | 依赖真实算法和硬件 | 注入 `MockDetector` / `MockSolver` |
+| 依赖方向 | 算法层依赖具体实现头文件 | 只依赖 `IDetector` / `ISolver` 接口 |
+
+### clangd 额外配置（本阶段修复）
+
+| 问题 | 修复 |
+|------|------|
+| `Eigen/Dense` 找不到 | `.clangd` `Add: -I/usr/include/eigen3` |
+| `cv::` 找不到 | `.clangd` `Add: -I/usr/include/opencv4` |
+| `chrono consteval` 误报 | `.clangd` `Suppress: invalid_consteval_call`（GCC libstdc++ 与 clang 前端不兼容） |
+| `-std=c++17` | 升级为 `-std=c++20` |
+
+### 编译状态
 
 ```
-src/interfaces/   ← 业务接口（IDetector, IPredictor, ITracker...）
-src/factory/      ← 模板工厂注册表
+mv-interfaces  ✓ INTERFACE 库配置成功（CMake 输出验证）
+mv-factory     ✓ INTERFACE 库配置成功（CMake 输出验证）
+Mock 实现 + Factory::Create / Keys   ✓ g++ -std=c++20 编译通过
+Stage 1 冒烟测试：15 / 15 仍全部通过 ✓
 ```
-
-### 主要工作
-
-1. **`IDetector` 接口**：统一装甲板/能量机关检测器的调用接口
-2. **模板工厂**：通过字符串键注册和创建具体实现
-   ```cpp
-   // 注册
-   Factory<ICamera>::Register<MindVisionCamera>("mindvision");
-   Factory<ICamera>::Register<OpenCvCamera>("opencv");
-   // 创建
-   auto cam = Factory<ICamera>::Create("mindvision");
-   ```
-3. **配置驱动**：从 YAML 中读取 `type` 字段，工厂根据类型名创建对应实现
-4. **数据类型定义**：统一 `DetectionResult`、`PredictionResult` 等跨层数据结构
 
 ---
 
@@ -172,3 +201,5 @@ src/fsm/
 |------|------|--------|
 | `src/app/smoke_test.cpp` | `main()` 认知复杂度超阈值（47 > 25），`files.size() >= 1` 应为 `!files.empty()` | 低（测试代码） |
 | `module/foxglove_publisher/foxglove_publisher.cpp` | `schemas.hpp` 类型在 `namespace foxglove::schemas` 内失效，编译报错 | 中（旧代码，不影响新模块） |
+| `src/interfaces/types.hpp` | `Detection` 中的 `cv::Mat pattern` 字段暂未添加（旧 predictor::Armor 有），待 Stage 3 具体实现时按需补充 | 低 |
+| `src/factory/` | 尚无对应的具体实现（`BasicArmorDetector` 等），工厂注册表为空，`Create()` 目前只能用 Mock | 高（Stage 3 下阶段完成）|
