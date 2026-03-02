@@ -89,11 +89,11 @@ class Factory {
    */
   [[nodiscard]] static std::unique_ptr<Base> Create(const std::string& key) {
     auto& reg = Registry();
-    const auto it = reg.find(key);
-    if (it == reg.end()) {
+    const auto FOUND = reg.find(key);
+    if (FOUND == reg.end()) {
       return nullptr;
     }
-    return it->second();
+    return FOUND->second();
   }
 
   // ── 查询 ─────────────────────────────────────────────────────────────────
@@ -111,9 +111,7 @@ class Factory {
   }
 
   /** @return key 是否已注册 */
-  [[nodiscard]] static bool Has(const std::string& key) {
-    return Registry().count(key) > 0;
-  }
+  [[nodiscard]] static bool Has(const std::string& key) { return Registry().count(key) > 0; }
 
  private:
   // Meyers Singleton：第一次调用时构造，保证静态初始化顺序安全
@@ -136,13 +134,13 @@ class Factory {
  *
  * 使用匿名命名空间内的静态变量触发注册，避免符号冲突。
  */
-#define MV_FACTORY_REGISTER(Base, key_str, ConcreteT)                          \
-  namespace {                                                                   \
-  const bool MV_FACTORY_REGISTERED_##ConcreteT = [] {                          \
-    ::mv::Factory<Base>::Register(key_str,                                      \
-        [] { return std::make_unique<ConcreteT>(); });                          \
-    return true;                                                                \
-  }();                                                                          \
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
+#define MV_FACTORY_REGISTER(Base, key_str, ConcreteT)                                     \
+  namespace {                                                                             \
+  const bool MV_FACTORY_REGISTERED_##ConcreteT = [] {                                     \
+    ::mv::Factory<Base>::Register(key_str, [] { return std::make_unique<ConcreteT>(); }); \
+    return true;                                                                          \
+  }();                                                                                    \
   }  // namespace
 
 }  // namespace mv
@@ -154,21 +152,26 @@ class Factory {
 // 使用前需 #include 对应的接口头文件
 
 /** 注册 IDetector 实现：MV_REGISTER_DETECTOR("basic", BasicArmorDetector) */
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define MV_REGISTER_DETECTOR(key_str, ConcreteT) \
   MV_FACTORY_REGISTER(::mv::IDetector, key_str, ConcreteT)
 
 /** 注册 ISolver 实现：MV_REGISTER_SOLVER("pnp", BasicPnpSolver) */
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define MV_REGISTER_SOLVER(key_str, ConcreteT) \
   MV_FACTORY_REGISTER(::mv::ISolver, key_str, ConcreteT)
 
 /** 注册 IPredictor 实现：MV_REGISTER_PREDICTOR("ekf", EkfPredictor) */
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define MV_REGISTER_PREDICTOR(key_str, ConcreteT) \
   MV_FACTORY_REGISTER(::mv::IPredictor, key_str, ConcreteT)
 
 /** 注册 ICamera 实现：MV_REGISTER_CAMERA("mindvision", MindVisionCamera) */
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define MV_REGISTER_CAMERA(key_str, ConcreteT) \
   MV_FACTORY_REGISTER(::mv::hal::ICamera, key_str, ConcreteT)
 
 /** 注册 ISerial 实现：MV_REGISTER_SERIAL("uart", UartSerial) */
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define MV_REGISTER_SERIAL(key_str, ConcreteT) \
   MV_FACTORY_REGISTER(::mv::hal::ISerial, key_str, ConcreteT)
