@@ -25,11 +25,11 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
-#include <optional>
 #include <string>
 
 #include <Eigen/Dense>
 #include <opencv2/core.hpp>
+#include <optional>
 
 namespace mv {
 
@@ -38,22 +38,22 @@ namespace mv {
 // ============================================================================
 
 /** @brief 装甲板颜色（敌方颜色由上层从配置读取后传入）*/
-enum class ArmorColor : uint8_t { Red = 0, Blue, Unknown };
+enum class ArmorColor : uint8_t { RED = 0, BLUE, UNKNOWN };
 
 /** @brief 装甲板尺寸类型 */
-enum class ArmorType : uint8_t { Small = 0, Big };
+enum class ArmorType : uint8_t { SMALL = 0, BIG };
 
 /** @brief 装甲板编号（对应机器人 ID）*/
 enum class ArmorNumber : uint8_t {
-  One = 0,
-  Two,
-  Three,
-  Four,
-  Five,
-  Sentry,
-  Outpost,
-  Base,
-  Unknown
+  ONE = 0,
+  TWO,
+  THREE,
+  FOUR,
+  FIVE,
+  SENTRY,
+  OUTPOST,
+  BASE,
+  UNKNOWN
 };
 
 // ============================================================================
@@ -70,9 +70,9 @@ enum class ArmorNumber : uint8_t {
  */
 struct Detection {
   // ── 2D 信息（检测器直接输出）─────────────────────────────────────────────
-  ArmorColor color{ArmorColor::Unknown};
-  ArmorType type{ArmorType::Small};
-  ArmorNumber number{ArmorNumber::Unknown};
+  ArmorColor color{ArmorColor::UNKNOWN};
+  ArmorType type{ArmorType::SMALL};
+  ArmorNumber number{ArmorNumber::UNKNOWN};
 
   /** 图像平面四个角点，顺序：左下、右下、右上、左上 */
   std::array<cv::Point2f, 4> points{};
@@ -146,15 +146,15 @@ struct GimbalControl {
 /** @brief 跟踪目标的完整状态（比 GimbalControl 包含更多诊断信息）*/
 struct TrackTarget {
   bool is_tracking{false};
-  ArmorNumber number{ArmorNumber::Unknown};
-  ArmorColor color{ArmorColor::Unknown};
+  ArmorNumber number{ArmorNumber::UNKNOWN};
+  ArmorColor color{ArmorColor::UNKNOWN};
 
-  Eigen::Vector3d position{Eigen::Vector3d::Zero()};   // 世界/云台坐标系（m）
-  Eigen::Vector3d velocity{Eigen::Vector3d::Zero()};   // 速度（m/s）
-  double yaw_predicted{0.0};                           // 预测 yaw（rad）
-  double pitch_predicted{0.0};                         // 预测 pitch（rad）
+  Eigen::Vector3d position{Eigen::Vector3d::Zero()};  // 世界/云台坐标系（m）
+  Eigen::Vector3d velocity{Eigen::Vector3d::Zero()};  // 速度（m/s）
+  double yaw_predicted{0.0};                          // 预测 yaw（rad）
+  double pitch_predicted{0.0};                        // 预测 pitch（rad）
 
-  std::string tracker_state{"lost"};                   // 跟踪器内部状态名
+  std::string tracker_state{"lost"};  // 跟踪器内部状态名
 };
 
 }  // namespace mv
