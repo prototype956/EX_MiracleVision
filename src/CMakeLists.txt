@@ -14,10 +14,10 @@ add_subdirectory(app)
 # 阶段二：硬件抽象层（HAL）
 add_subdirectory(hal)
 
-# 阶段三：接口层 + 工厂系统 —— 待实现
-# add_subdirectory(interfaces)
-# add_subdirectory(factory)
-# add_subdirectory(modules)
+# 阶段三：接口层 + 工厂系统
+add_subdirectory(interfaces)
+add_subdirectory(factory)
+# add_subdirectory(modules)  # 待实现：具体算法模块（装甲板检测器、预测器等）
 
 # 阶段四：线程 Pipeline —— 待实现
 # add_subdirectory(pipeline)
