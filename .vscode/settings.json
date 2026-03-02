@@ -14,7 +14,10 @@
     "--pch-storage=memory",
     "--all-scopes-completion",
     "--log=error",
-    "--pretty"
+    "--pretty",
+    // 让 clangd 通过查询实际编译器来获取系统头文件路径，
+    // 避免 Clang 14 在解析 GCC libstdc++ C++20 <chrono> 时产生误报
+    "--query-driver=/usr/bin/g++*,/usr/bin/g++-*,/usr/bin/gcc*,/usr/bin/gcc-*"
   ],
   "clangd.path": "clangd",
   
