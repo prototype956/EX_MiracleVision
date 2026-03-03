@@ -50,6 +50,7 @@ class ISerial {
   ISerial(ISerial&&) = default;
   ISerial& operator=(ISerial&&) = default;
 
+ public:
   /**
    * @brief 打开串口
    *

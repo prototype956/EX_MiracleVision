@@ -1,6 +1,6 @@
 # 重构进展追踪
 
-> 最后更新：2026-03-02
+> 最后更新：2026-03-03
 > 分支：`refactor/core-infra`
 
 ---
@@ -11,7 +11,7 @@
 Stage 1 ─ 基础设施          ✅ 完成
 Stage 2 ─ 硬件抽象层 (HAL)  ✅ 完成
 Stage 3 ─ 接口层 + 工厂      ✅ 完成
-Stage 4 ─ 线程 Pipeline      🔲 待开始
+Stage 4 ─ 线程 Pipeline      ✅ 完成
 Stage 5 ─ 状态机 (FSM)       🔲 待开始
 Stage 6 ─ 替换旧模块         🔲 待开始
 ```
@@ -146,22 +146,56 @@ Stage 1 冒烟测试：15 / 15 仍全部通过 ✓
 
 ---
 
-## Stage 4：线程 Pipeline 🔲
+## Stage 4：线程 Pipeline ✅
 
-### 目标
+### 交付物
+
+| 文件 | 说明 |
+|------|------|
+| `src/interfaces/i_voter.hpp` | `IVoter` 纯虚接口（TrackTarget → 是否开火） |
+| `src/interfaces/i_shooter.hpp` | `IShooter` 纯虚接口（GimbalControl → 串口字节流） |
+| `src/pipeline/packet.hpp` | 节点间数据包：`FramePacket`、`DetectPacket`、`ControlPacket`、`RecvPacket` |
+| `src/pipeline/channel.hpp` | `Channel<T>`：带 `Shutdown` 机制的有界线程安全通道 |
+| `src/pipeline/node.hpp` | `PipelineNode` 抽象基类（线程生命周期 + 诊断接口） |
+| `src/pipeline/capture_node.hpp/.cpp` | 采集节点（ICamera→FramePacket，带重试和 error_code）|
+| `src/pipeline/detect_node.hpp/.cpp` | 检测+解算节点（IDetector+ISolver→DetectPacket） |
+| `src/pipeline/predict_node.hpp/.cpp` | 预测+投票节点（IPredictor+IVoter→ControlPacket） |
+| `src/pipeline/serial_node.hpp/.cpp` | 串口收发节点（IShooter发送+上行解析→shared state）|
+| `src/pipeline/pipeline.hpp` | `VisionPipeline` 编排器（Builder 模式，Start/Stop/CheckErrors） |
+| `src/pipeline/CMakeLists.txt` | `mv-pipeline` 静态库 |
+
+### 关键设计决策
+
+- **`Channel<T>` 带 Shutdown**：原 `ThreadSafeQueue` 的 `pop()` 无超时/关闭支持，会永久阻塞导致 Pipeline 无法停止。新的 `Channel` 增加 `Pop(value, timeout)` 和 `Shutdown()`，节点线程用 10ms 超时轮询 stop 标志，实现干净退出。
+- **有界溢出策略（丢最旧帧）**：`Channel::Push` 队满时丢弃最旧帧而非阻塞，优先保证实时性。帧 ID 可用于检测掉帧。
+- **共享原子状态（`SharedState`）**：`enemy_color` 是 `std::atomic<ArmorColor>`，`SerialNode` 写、`DetectNode`/`PredictNode` 读，无 mutex、无拷贝，跨线程可见性通过 `load()`/`store()` 默认 `seq_cst` 保证。
+- **`VisionPipeline::Builder`**：强制调用方显式注入所有 7 个依赖（`Build()` 前检查）；通道容量可选配置（帧通道默认 2，控制通道默认 1）；`Build()` 内部负责通道和节点的创建，外部调用点极简。
+- **停止顺序**：`Stop()` 必须按前级→后级依次停止（Capture→Detect→Predict→Serial），每级 `Stop()` 会 `Shutdown` 其输出通道，触发下级退出阻塞等待，防止死锁。
+- **`ICamera` / `ISerial` 访问控制修复**：原接口的虚函数误放 `protected`，导致接口无法从外部调用。本阶段修复为 `public`（保留移动构造/赋值为 `protected`，符合 C.67）。
+
+### 数据流
 
 ```
-src/pipeline/
-├── pipeline.hpp    ← Pipeline 管理器
-├── node.hpp        ← Pipeline 节点基类
-└── thread_pool.hpp ← 线程池
+CaptureNode (ICamera)
+    │  frame_ch_ (容量 2, FramePacket)
+    ▼
+DetectNode (IDetector + ISolver)
+    │  detect_ch_ (容量 2, DetectPacket)
+    ▼
+PredictNode (IPredictor + IVoter)
+    │  control_ch_ (容量 1, ControlPacket)
+    ▼
+SerialNode (IShooter + ISerial)
+    │  上行解析 → SharedState::enemy_color (atomic)
+    └────────────────────────────────▶ DetectNode/PredictNode (下一帧生效)
 ```
 
-### 主要工作
+### 编译状态
 
-- 基于 `ThreadSafeQueue`（已有，`utils/thread_safe_queue.hpp`）设计节点间数据流
-- 相机采集、检测、预测、串口通信各自独立线程
-- 统一的启动/停止/重启机制
+```
+mv-pipeline  ✓ 零警告零错误（4 个 .cpp，1 个静态库）
+整体构建     ✓ make -j$(nproc) 全部目标通过
+```
 
 ---
 
@@ -202,5 +236,6 @@ src/fsm/
 | `src/app/smoke_test.cpp` | `main()` 认知复杂度超阈值（47 > 25），`files.size() >= 1` 应为 `!files.empty()` | 低（测试代码） |
 | `module/foxglove_publisher/foxglove_publisher.cpp` | `schemas.hpp` 类型在 `namespace foxglove::schemas` 内失效，编译报错 | 中（旧代码，不影响新模块） |
 | `src/interfaces/types.hpp` | `Detection` 中的 `cv::Mat pattern` 字段暂未添加（旧 predictor::Armor 有），待具体实现时按需补充 | 低 |
-| `src/factory/` | 尚无对应的具体实现（`BasicArmorDetector` 等），工厂注册表为空，`Create()` 目前只能用 Mock | 高（Stage 3 后续完成）|
-| `src/interfaces/` | **Voter / Shooter 接口未实现**：`IPredictor::GetTrackTarget()` 的返回值需要传给 Voter（开火决策）和 Shooter（弹道补偿 + 串口编码），目前 `TrackTarget` 只接入了 Foxglove 可视化。实现时建议新增 `IVoter` / `IShooter` 接口并通过工厂注册，数据来源为 `GetTrackTarget()` 而非重复传递 `Detection`。| 高（Stage 4 Pipeline 时一并实现）|
+| `src/factory/` | 尚无对应的具体实现（`BasicArmorDetector` 等），工厂注册表为空，`Create()` 目前只能用 Mock | 高（Stage 5/6 完成）|
+| `src/pipeline/serial_node.cpp` | 上行帧格式使用占位协议（帧头 0xAA + 5 字节），正式比赛需与下位机队友确认协议后修改 `TryRecv()` | 中（比赛前修改）|
+| `src/pipeline/` | `IVoter`/`IShooter` 无具体实现，工厂 `Create()` 返回 nullptr，Pipeline 目前仅能使用 Mock 进行集成测试 | 高（Stage 5/6 实现具体类）|

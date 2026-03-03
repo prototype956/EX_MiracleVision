@@ -19,8 +19,8 @@ add_subdirectory(interfaces)
 add_subdirectory(factory)
 # add_subdirectory(modules)  # 待实现：具体算法模块（装甲板检测器、预测器等）
 
-# 阶段四：线程 Pipeline —— 待实现
-# add_subdirectory(pipeline)
+# 阶段四：线程 Pipeline
+add_subdirectory(pipeline)
 
 # 阶段五：状态机 —— 待实现
 # add_subdirectory(fsm)

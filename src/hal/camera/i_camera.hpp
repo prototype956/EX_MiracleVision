@@ -51,6 +51,7 @@ class ICamera {
   ICamera(ICamera&&) = default;
   ICamera& operator=(ICamera&&) = default;
 
+ public:
   /**
    * @brief 打开并初始化相机
    *

@@ -1,0 +1,73 @@
+/**
+ * @file predict_node.cpp
+ * @brief PredictNode 工作线程实现
+ */
+#include "predict_node.hpp"
+
+#include "core/logger.hpp"
+
+namespace mv::pipeline {
+
+static constexpr auto kPopTimeout = std::chrono::milliseconds{10};
+
+PredictNode::PredictNode(std::unique_ptr<IPredictor> predictor,
+                         std::unique_ptr<IVoter> voter,
+                         std::shared_ptr<Channel<DetectPacket>> input_ch,
+                         std::shared_ptr<Channel<ControlPacket>> output_ch,
+                         std::atomic<ArmorColor>& enemy_color)
+    : PipelineNode("PredictNode"),
+      predictor_(std::move(predictor)),
+      voter_(std::move(voter)),
+      input_ch_(std::move(input_ch)),
+      output_ch_(std::move(output_ch)),
+      enemy_color_(enemy_color) {}
+
+void PredictNode::OnStop() {
+  if (input_ch_) {
+    input_ch_->Shutdown();
+  }
+  if (output_ch_) {
+    output_ch_->Shutdown();
+  }
+}
+
+void PredictNode::WorkLoop() {
+  MV_LOG_INFO("PredictNode", "Worker started.");
+
+  while (!stop_requested_.load()) {
+    DetectPacket det_pkt;
+    if (!input_ch_->Pop(det_pkt, kPopTimeout)) {
+      continue;
+    }
+
+    const ArmorColor COLOR = enemy_color_.load();
+
+    // ── 预测（EKF 跟踪 + 云台角度输出）──────────────────────────────────
+    GimbalControl control =
+        predictor_->Predict(det_pkt.detections, det_pkt.timestamp, COLOR);
+
+    // ── 跟踪状态快照（供 Voter 决策 + Foxglove 可视化）────────────────
+    const TrackTarget TARGET = predictor_->GetTrackTarget();
+
+    // ── 开火决策（Voter 签字覆写 fire 字段）──────────────────────────
+    control.fire = voter_->Vote(TARGET, control);
+
+    ControlPacket out_pkt{
+        .control = control,
+        .track_target = TARGET,
+        .timestamp = det_pkt.timestamp,
+        .frame_id = det_pkt.frame_id,
+    };
+
+    if (!output_ch_->Push(std::move(out_pkt))) {
+      break;  // 通道关闭，退出
+    }
+
+    ++processed_count_;
+  }
+
+  MV_LOG_INFO("PredictNode", "Worker stopped. Processed {} packets.",
+              processed_count_.load());
+}
+
+}  // namespace mv::pipeline

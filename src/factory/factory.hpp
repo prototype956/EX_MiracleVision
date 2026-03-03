@@ -166,6 +166,16 @@ class Factory {
 #define MV_REGISTER_PREDICTOR(key_str, ConcreteT) \
   MV_FACTORY_REGISTER(::mv::IPredictor, key_str, ConcreteT)
 
+/** 注册 IVoter 实现：MV_REGISTER_VOTER("cooldown", CooldownVoter) */
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
+#define MV_REGISTER_VOTER(key_str, ConcreteT) \
+  MV_FACTORY_REGISTER(::mv::IVoter, key_str, ConcreteT)
+
+/** 注册 IShooter 实现：MV_REGISTER_SHOOTER("rm", RmShooter) */
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
+#define MV_REGISTER_SHOOTER(key_str, ConcreteT) \
+  MV_FACTORY_REGISTER(::mv::IShooter, key_str, ConcreteT)
+
 /** 注册 ICamera 实现：MV_REGISTER_CAMERA("mindvision", MindVisionCamera) */
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define MV_REGISTER_CAMERA(key_str, ConcreteT) \
