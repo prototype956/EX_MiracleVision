@@ -21,8 +21,6 @@ CompileFlags:
 # 诊断 / 静态分析
 # ----------------------------------------------------------------------------
 Diagnostics:
-  UnusedIncludes: None
-  MissingIncludes: None
   ClangTidy:
     Add:
       - google-*
