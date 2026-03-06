@@ -22,5 +22,5 @@ add_subdirectory(factory)
 # 阶段四：线程 Pipeline
 add_subdirectory(pipeline)
 
-# 阶段五：状态机 —— 待实现
-# add_subdirectory(fsm)
+# 阶段五：状态机
+add_subdirectory(fsm)
