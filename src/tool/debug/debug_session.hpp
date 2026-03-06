@@ -38,8 +38,8 @@
  */
 #pragma once
 
-#include "tool/param_tuner.hpp"
-#include "tool/view_renderer.hpp"
+#include "tool/debug/param_tuner.hpp"
+#include "tool/debug/view_renderer.hpp"
 #include "interfaces/types.hpp"
 #include "modules/armor_detector/basic_armor_detector.hpp"
 

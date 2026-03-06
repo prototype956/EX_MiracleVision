@@ -26,7 +26,7 @@
 #include "modules/armor_detector/basic_armor_detector.hpp"
 #include "modules/pnp_solver/pnp_solver.hpp"
 #include "modules/simple_predictor/simple_predictor.hpp"
-#include "tool/debug_session.hpp"
+#include "tool/debug/debug_session.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -42,9 +42,9 @@ int main(int argc, char** argv) {
   YAML::Node cam_cfg;
   if (argc > 1) {
     const std::string src(argv[1]);
-    const bool is_index =
-        !src.empty() && std::all_of(src.begin(), src.end(),
-                                    [](unsigned char c) { return std::isdigit(c) != 0; });
+    const bool is_index = !src.empty() && std::all_of(src.begin(), src.end(), [](unsigned char c) {
+      return std::isdigit(c) != 0;
+    });
     if (is_index) {
       cam_cfg["source"] = std::stoi(src);
     } else {
@@ -69,8 +69,8 @@ int main(int argc, char** argv) {
   const YAML::Node root_cfg = cfg.Subtree();
 
   mv::modules::BasicArmorDetector detector;
-  mv::modules::PnpSolver          solver;
-  mv::modules::SimplePredictor    predictor;
+  mv::modules::PnpSolver solver;
+  mv::modules::SimplePredictor predictor;
 
   if (!detector.Init(root_cfg) || !solver.Init(root_cfg) || !predictor.Init(root_cfg)) {
     MV_LOG_ERROR("video-test", "模块初始化失败");
@@ -89,14 +89,13 @@ int main(int argc, char** argv) {
 
   // ── 5. 配置 DebugSession ─────────────────────────────────────────────────
   mv::tool::DebugSession dbg;
-  dbg.Init({.main_window  = "mv-video-test",
-             .debug_window = "mv-video-debug",
-             .save_yaml    = std::string(CONFIG_FILE_PATH) + "/debug_override.yaml"});
+  dbg.Init({.main_window = "mv-video-test",
+            .debug_window = "mv-video-debug",
+            .save_yaml = std::string(CONFIG_FILE_PATH) + "/debug_override.yaml"});
 
   // 注册可调参数（lambda 按引用捕获本地 params，每帧由 ApplyParams() 推送）
   auto params = detector.GetParams();
-  dbg.AddParam({"Thresh         ", "light_thresh",
-                params.light_thresh, 255,
+  dbg.AddParam({"Thresh         ", "light_thresh", params.light_thresh, 255,
                 [&params](int v) { params.light_thresh = v; },
                 [&params] { return static_cast<double>(params.light_thresh); }});
   dbg.AddParam({"MaxAngle x10   ", "max_light_angle",
@@ -111,9 +110,8 @@ int main(int argc, char** argv) {
                 static_cast<int>(params.max_armor_ratio * 10.F), 100,
                 [&params](int v) { params.max_armor_ratio = static_cast<float>(v) / 10.F; },
                 [&params] { return static_cast<double>(params.max_armor_ratio); }});
-  dbg.AddParam({"AngleDiff x10  ", "max_angle_diff",
-                static_cast<int>(params.max_angle_diff * 10.F), 900,
-                [&params](int v) { params.max_angle_diff = static_cast<float>(v) / 10.F; },
+  dbg.AddParam({"AngleDiff x10  ", "max_angle_diff", static_cast<int>(params.max_angle_diff * 10.F),
+                900, [&params](int v) { params.max_angle_diff = static_cast<float>(v) / 10.F; },
                 [&params] { return static_cast<double>(params.max_angle_diff); }});
 
   // 'q'/'ESC'/空格/1-4 已由 DebugSession 内置注册
@@ -121,8 +119,7 @@ int main(int argc, char** argv) {
 
   // ── 6. 读取敌方颜色 ──────────────────────────────────────────────────────
   const std::string ENEMY_STR = cfg.Get<std::string>("auto_aim.enemy_color", "red");
-  const mv::ArmorColor ENEMY  = (ENEMY_STR == "blue") ? mv::ArmorColor::BLUE
-                                                        : mv::ArmorColor::RED;
+  const mv::ArmorColor ENEMY = (ENEMY_STR == "blue") ? mv::ArmorColor::BLUE : mv::ArmorColor::RED;
   MV_LOG_INFO("video-test", "敌方颜色: {}", ENEMY_STR);
 
   // ── 7. 主循环 ────────────────────────────────────────────────────────────
@@ -131,8 +128,12 @@ int main(int argc, char** argv) {
   while (true) {
     // 处理按键；paused 时不采集新帧
     const auto [quit, paused] = dbg.Poll();
-    if (quit)   { break; }
-    if (paused) { continue; }
+    if (quit) {
+      break;
+    }
+    if (paused) {
+      continue;
+    }
 
     // Trackbar → params → detector
     dbg.ApplyParams();
@@ -147,7 +148,9 @@ int main(int argc, char** argv) {
     // 检测 → 解算 → 预测
     const auto t_frame = std::chrono::steady_clock::now();
     auto detections = detector.Detect(frame, ENEMY);
-    for (auto& det : detections) { solver.Solve(det); }
+    for (auto& det : detections) {
+      solver.Solve(det);
+    }
     const mv::GimbalControl ctrl = predictor.Predict(detections, t_frame, ENEMY);
 
     // 统计 + 渲染

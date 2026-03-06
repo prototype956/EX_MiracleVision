@@ -2,7 +2,7 @@
  * @file view_renderer.cpp
  * @brief ViewRenderer 实现
  */
-#include "view_renderer.hpp"
+#include "tool/debug/view_renderer.hpp"
 
 #include <array>
 #include <iomanip>
@@ -130,6 +130,8 @@ void ViewRenderer::Init(const std::string& main_win, const std::string& debug_wi
   impl_->debug_win_ = debug_win;
   cv::namedWindow(main_win,  cv::WINDOW_NORMAL);
   cv::namedWindow(debug_win, cv::WINDOW_NORMAL);
+  cv::resizeWindow(main_win,  960, 540);   // 初始大小可拖拽调整
+  cv::resizeWindow(debug_win, 640, 480);
 }
 
 void     ViewRenderer::SetView(ViewMode m) noexcept { impl_->view_ = m; }

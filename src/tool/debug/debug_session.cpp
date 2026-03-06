@@ -2,9 +2,9 @@
  * @file debug_session.cpp
  * @brief DebugSession 实现
  */
-#include "debug_session.hpp"
+#include "tool/debug/debug_session.hpp"
 
-#include "tool/metrics_tracker.hpp"
+#include "tool/debug/metrics_tracker.hpp"
 
 #include <unordered_map>
 
