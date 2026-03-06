@@ -1,6 +1,6 @@
 # 重构进展追踪
 
-> 最后更新：2026-03-03
+> 最后更新：2026-03-06
 > 分支：`refactor/core-infra`
 
 ---
@@ -12,7 +12,7 @@ Stage 1 ─ 基础设施          ✅ 完成
 Stage 2 ─ 硬件抽象层 (HAL)  ✅ 完成
 Stage 3 ─ 接口层 + 工厂      ✅ 完成
 Stage 4 ─ 线程 Pipeline      ✅ 完成
-Stage 5 ─ 状态机 (FSM)       🔲 待开始
+Stage 5 ─ 状态机 (FSM)       ✅ 完成
 Stage 6 ─ 替换旧模块         🔲 待开始
 ```
 
@@ -216,21 +216,49 @@ mv-pipeline  ✓ 零警告零错误（4 个 .cpp，1 个静态库）
 
 ---
 
-## Stage 5：状态机（FSM） 🔲
+## Stage 5：状态机（FSM） ✅
 
-### 目标
+**提交**：`d521f23`（实现） / `ae4759f`（lint 修复）
+
+### 交付物
+
+| 文件 | 说明 |
+|------|------|
+| `src/fsm/state_machine.hpp` | `StateMachine<StateEnum, Context>` 通用模板（header-only，纯标准库）|
+| `src/fsm/vision_fsm.hpp` | `VisionFSM` 声明、`SystemState` 枚举（6 个状态）、`SystemContext` |
+| `src/fsm/vision_fsm.cpp` | 6 个状态处理器实现 + `VisionFSM` 方法实现 |
+| `src/fsm/CMakeLists.txt` | `mv-fsm` 静态库，依赖 `mv-pipeline` + `mv-core` |
+| `docs/refractor/fsm/FSM_USAGE.md` | 使用指南（与 PIPELINE_USAGE.md 格式统一）|
+
+### 关键设计决策
+
+- **双层架构**：`StateMachine<>` 模板零业务依赖，可复用于其他子系统；`VisionFSM` 是视觉专用的业务层，仅此文件持有 `VisionPipeline` 所有权。
+- **Pending Transition 机制**：状态处理器内部通过写 `ctx.requested_state` 请求跳转，`VisionFSM::Update()` 在每次 `on_update` 结束后统一处理，避免在回调内部嵌套调用 `Transition()`（重入）。
+- **自动恢复限制**：ERROR 状态有 `MAX_RECOVERY = 3` 次冷却重试，超限后停留 ERROR 等待人工干预，防止无限重启刷日志。
+- **析构安全**：`VisionFSM::~VisionFSM()` 在 Pipeline 仍在运行时调用 `Stop()`，保证线程安全退出。
+- **`assert` → `if + throw`**：生产代码不依赖 `assert`（Release 模式会被删除），空指针检查改为 `std::invalid_argument` / `std::logic_error`，同时消除 `array-to-pointer-decay` clang-tidy 警告。
+
+### 状态流转
 
 ```
-src/fsm/
-├── state.hpp       ← 状态基类
-├── state_machine.hpp ← 状态机模板
-└── states/         ← 具体状态（AutoAim, Buff, Calibration...）
+IDLE ──Start()──► INIT ──稳定 200ms──► AUTO_AIM ◄──► ENERGY_BUFF（预留）
+                          │                 │
+                     CheckErrors       CheckErrors
+                          └──────┬──────────┘
+                               ERROR ──冷却 500ms──► RECOVERY ──Reset──► INIT
+※ 任意状态 ──Stop()──► IDLE
 ```
 
-### 主要工作
+### 编译状态
 
-- 替换原有的 `RunMode` 枚举 + `switch-case`
-- 状态转换由 FSM 驱动，业务逻辑集中在各 State 类中
+| 提交 | 说明 |
+|------|------|
+| `d521f23` | Stage 5 初始实现：6 状态 FSM，`StateMachine<>` 模板 |
+| `ae4759f` | lint 修复：`assert` 替换为 `if+throw`，消除 array-to-pointer-decay 警告 |
+
+```
+mv-fsm  ✓ 零警告零错误（1 个 .cpp，1 个静态库）
+```
 
 ---
 
