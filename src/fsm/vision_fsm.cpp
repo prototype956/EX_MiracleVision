@@ -19,10 +19,11 @@
  */
 
 #include "vision_fsm.hpp"
+
 #include "core/logger.hpp"
 
-#include <cassert>
 #include <chrono>
+#include <stdexcept>
 
 namespace mv::fsm {
 
@@ -61,7 +62,9 @@ void IdleOnUpdate(SystemContext& ctx) {
 // ── INIT ─────────────────────────────────────────────────────────────────────
 
 void InitOnEnter(SystemContext& ctx) {
-  assert(ctx.pipeline != nullptr);  // NOLINT(cppcoreguidelines-pro-bounds-array-to-pointer-decay,hicpp-no-array-decay)
+  if (ctx.pipeline == nullptr) {
+    throw std::logic_error("InitOnEnter: pipeline 为空");
+  }
   MV_LOG_INFO("FSM", "进入 INIT 状态，正在启动 Pipeline...");
   ctx.pipeline->Start();
   ctx.init_enter_time = std::chrono::steady_clock::now();
@@ -148,8 +151,8 @@ void ErrorOnEnter(SystemContext& ctx) {
   ctx.error_enter_time = std::chrono::steady_clock::now();
 
   // 收集各节点错误码（当前简单打印，Stage 6 可精细化）
-  MV_LOG_ERROR("FSM", "进入 ERROR 状态，Pipeline 已停止。恢复次数={}/{}",
-               ctx.recovery_attempts, SystemContext::MAX_RECOVERY);
+  MV_LOG_ERROR("FSM", "进入 ERROR 状态，Pipeline 已停止。恢复次数={}/{}", ctx.recovery_attempts,
+               SystemContext::MAX_RECOVERY);
 }
 
 void ErrorOnUpdate(SystemContext& ctx) {
@@ -190,7 +193,9 @@ void RecoveryOnUpdate(SystemContext& ctx) {
 // ============================================================================
 
 VisionFSM::VisionFSM(std::unique_ptr<pipeline::VisionPipeline> pipeline) {
-  assert(pipeline != nullptr);  // NOLINT(cppcoreguidelines-pro-bounds-array-to-pointer-decay,hicpp-no-array-decay)
+  if (pipeline == nullptr) {
+    throw std::invalid_argument("VisionFSM: pipeline 不可为空");
+  }
   ctx_.pipeline = std::move(pipeline);
   RegisterHandlers();
   sm_.Init(SystemState::IDLE, ctx_);
@@ -208,46 +213,45 @@ void VisionFSM::RegisterHandlers() {
   using H = StateMachine<S, SystemContext>::StateHandler;
 
   sm_.Register(S::IDLE, H{
-    .on_enter  = handlers::IdleOnEnter,
-    .on_exit   = nullptr,
-    .on_update = handlers::IdleOnUpdate,
-  });
+                            .on_enter = handlers::IdleOnEnter,
+                            .on_exit = nullptr,
+                            .on_update = handlers::IdleOnUpdate,
+                        });
 
   sm_.Register(S::INIT, H{
-    .on_enter  = handlers::InitOnEnter,
-    .on_exit   = nullptr,
-    .on_update = handlers::InitOnUpdate,
-  });
+                            .on_enter = handlers::InitOnEnter,
+                            .on_exit = nullptr,
+                            .on_update = handlers::InitOnUpdate,
+                        });
 
   sm_.Register(S::AUTO_AIM, H{
-    .on_enter  = handlers::AutoAimOnEnter,
-    .on_exit   = handlers::AutoAimOnExit,
-    .on_update = handlers::AutoAimOnUpdate,
-  });
+                                .on_enter = handlers::AutoAimOnEnter,
+                                .on_exit = handlers::AutoAimOnExit,
+                                .on_update = handlers::AutoAimOnUpdate,
+                            });
 
   sm_.Register(S::ENERGY_BUFF, H{
-    .on_enter  = handlers::EnergyBuffOnEnter,
-    .on_exit   = handlers::EnergyBuffOnExit,
-    .on_update = handlers::EnergyBuffOnUpdate,
-  });
+                                   .on_enter = handlers::EnergyBuffOnEnter,
+                                   .on_exit = handlers::EnergyBuffOnExit,
+                                   .on_update = handlers::EnergyBuffOnUpdate,
+                               });
 
   sm_.Register(S::ERROR, H{
-    .on_enter  = handlers::ErrorOnEnter,
-    .on_exit   = nullptr,
-    .on_update = handlers::ErrorOnUpdate,
-  });
+                             .on_enter = handlers::ErrorOnEnter,
+                             .on_exit = nullptr,
+                             .on_update = handlers::ErrorOnUpdate,
+                         });
 
   sm_.Register(S::RECOVERY, H{
-    .on_enter  = handlers::RecoveryOnEnter,
-    .on_exit   = nullptr,
-    .on_update = handlers::RecoveryOnUpdate,
-  });
+                                .on_enter = handlers::RecoveryOnEnter,
+                                .on_exit = nullptr,
+                                .on_update = handlers::RecoveryOnUpdate,
+                            });
 }
 
 void VisionFSM::Start() {
   if (sm_.Current() != SystemState::IDLE) {
-    MV_LOG_WARN("FSM", "Start() 被调用时状态为 {}，忽略",
-                SystemStateName(sm_.Current()));
+    MV_LOG_WARN("FSM", "Start() 被调用时状态为 {}，忽略", SystemStateName(sm_.Current()));
     return;
   }
   ctx_.recovery_attempts = 0;
@@ -258,8 +262,7 @@ void VisionFSM::Stop() {
   if (sm_.Current() == SystemState::IDLE) {
     return;
   }
-  MV_LOG_INFO("FSM", "Stop() 调用，强制转换到 IDLE（当前={}）",
-              SystemStateName(sm_.Current()));
+  MV_LOG_INFO("FSM", "Stop() 调用，强制转换到 IDLE（当前={}）", SystemStateName(sm_.Current()));
   sm_.Transition(SystemState::IDLE, ctx_);
 }
 
@@ -271,8 +274,7 @@ void VisionFSM::Update() {
   if (ctx_.has_pending_transition) {
     ctx_.has_pending_transition = false;
     SystemState next = ctx_.requested_state;
-    MV_LOG_DEBUG("FSM", "状态转换: {} → {}",
-                 SystemStateName(sm_.Current()), SystemStateName(next));
+    MV_LOG_DEBUG("FSM", "状态转换: {} → {}", SystemStateName(sm_.Current()), SystemStateName(next));
     sm_.Transition(next, ctx_);
   }
 }
