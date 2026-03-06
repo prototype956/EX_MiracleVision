@@ -78,24 +78,31 @@ namespace mv::fsm {
  * 当前版本不包含 CALIBRATION，可在 Stage 6 中扩展。
  */
 enum class SystemState : uint8_t {
-  IDLE = 0,      ///< 初始/停止状态，Pipeline 未运行
-  INIT,          ///< Pipeline 正在启动中
-  AUTO_AIM,      ///< 自瞄模式运行中（上行 mode = 0）
-  ENERGY_BUFF,   ///< 打符模式运行中（上行 mode = 1，预留）
-  ERROR,         ///< 错误状态，Pipeline 已停止，等待恢复
-  RECOVERY,      ///< 恢复中（Reset + 重新进入 INIT）
+  IDLE = 0,     ///< 初始/停止状态，Pipeline 未运行
+  INIT,         ///< Pipeline 正在启动中
+  AUTO_AIM,     ///< 自瞄模式运行中（上行 mode = 0）
+  ENERGY_BUFF,  ///< 打符模式运行中（上行 mode = 1，预留）
+  ERROR,        ///< 错误状态，Pipeline 已停止，等待恢复
+  RECOVERY,     ///< 恢复中（Reset + 重新进入 INIT）
 };
 
 /** @brief 状态名称字符串（日志输出用）*/
 inline const char* SystemStateName(SystemState state) noexcept {
   switch (state) {
-    case SystemState::IDLE:        return "IDLE";
-    case SystemState::INIT:        return "INIT";
-    case SystemState::AUTO_AIM:    return "AUTO_AIM";
-    case SystemState::ENERGY_BUFF: return "ENERGY_BUFF";
-    case SystemState::ERROR:       return "ERROR";
-    case SystemState::RECOVERY:    return "RECOVERY";
-    default:                       return "UNKNOWN";
+    case SystemState::IDLE:
+      return "IDLE";
+    case SystemState::INIT:
+      return "INIT";
+    case SystemState::AUTO_AIM:
+      return "AUTO_AIM";
+    case SystemState::ENERGY_BUFF:
+      return "ENERGY_BUFF";
+    case SystemState::ERROR:
+      return "ERROR";
+    case SystemState::RECOVERY:
+      return "RECOVERY";
+    default:
+      return "UNKNOWN";
   }
 }
 

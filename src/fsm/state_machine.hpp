@@ -85,9 +85,7 @@ class StateMachine {
    * 可以覆盖注册（后注册的覆盖先注册的）。
    * 必须在 Init() 之前完成所有注册。
    */
-  void Register(StateEnum state, StateHandler handler) {
-    handlers_[state] = std::move(handler);
-  }
+  void Register(StateEnum state, StateHandler handler) { handlers_[state] = std::move(handler); }
 
   // ── 生命周期 ──────────────────────────────────────────────────────────────
 
