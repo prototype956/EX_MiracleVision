@@ -192,10 +192,27 @@ SerialNode (IShooter + ISerial)
 
 ### 编译状态
 
+| 提交 | 说明 |
+|------|------|
+| `bb6a1b8` | Stage 4 初始实现：IVoter/IShooter、Channel、4 节点、VisionPipeline |
+| `34c2f02` | lint 修复：17 处 clang-tidy/clangd 警告全部消除 |
+
 ```
 mv-pipeline  ✓ 零警告零错误（4 个 .cpp，1 个静态库）
 整体构建     ✓ make -j$(nproc) 全部目标通过
 ```
+
+### `node.hpp` API（lint 修复后）
+
+`PipelineNode` 的 4 个原子成员由 `protected` 改为 `private`，派生类通过受保护方法访问：
+
+| 方法 | 替代原子成员 | 说明 |
+|------|------------|------|
+| `ShouldStop()` | `stop_requested_.load()` | 检查停止标志 |
+| `SetError(int code)` | `error_code_.store(code)` | 设置错误码（会置位 stop） |
+| `IncrementProcessed()` | `processed_count_++` | 帧计数 +1 |
+
+> 派生类 **不可** 直接访问 `stop_requested_`、`running_`、`error_code_`、`processed_count_`。
 
 ---
 

@@ -134,20 +134,34 @@ ch.DroppedCount() // 丢弃帧数
 
 ### `PipelineNode`（基类）
 
+> **注意**：4 个原子成员（`stop_requested_`、`running_`、`error_code_`、`processed_count_`）为 `private`，
+> 派生类必须通过受保护方法访问，不可直接读写原子成员。
+
 ```cpp
 // src/pipeline/node.hpp
 class MyNode : public PipelineNode {
 public:
     MyNode() : PipelineNode("MyNode") {}
+    MyNode(const MyNode&) = delete;
+    MyNode& operator=(const MyNode&) = delete;
+    MyNode(MyNode&&) = delete;
+    MyNode& operator=(MyNode&&) = delete;
 protected:
     void WorkLoop() override {
-        while (!stop_requested_.load()) {
-            // 带超时 Pop → 检查 stop → 处理 → Push
+        while (!ShouldStop()) {            // ← ShouldStop()，非 stop_requested_.load()
+            T value;
+            if (!input_ch_->Pop(value, std::chrono::milliseconds(10))) {
+                continue;                  // 超时：回到循环顶，重新检查 ShouldStop()
+            }
+            // 处理 value ...
+            IncrementProcessed();          // ← IncrementProcessed()，非 processed_count_++
         }
     }
     void OnStop() override {
-        input_ch_->Shutdown();  // 唤醒 Pop 等待
+        input_ch_->Shutdown();            // 唤醒 Pop 等待
     }
+    // 遇到致命错误时调用，会置位 stop_requested_
+    // SetError(int error_code);
 };
 ```
 
