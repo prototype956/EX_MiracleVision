@@ -8,10 +8,10 @@
 
 namespace mv::pipeline {
 
-static constexpr auto kPopTimeout = std::chrono::milliseconds{10};
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+static constexpr auto POP_TIMEOUT = std::chrono::milliseconds{10};
 
-DetectNode::DetectNode(std::unique_ptr<IDetector> detector,
-                       std::unique_ptr<ISolver> solver,
+DetectNode::DetectNode(std::unique_ptr<IDetector> detector, std::unique_ptr<ISolver> solver,
                        std::shared_ptr<Channel<FramePacket>> input_ch,
                        std::shared_ptr<Channel<DetectPacket>> output_ch,
                        std::atomic<ArmorColor>& enemy_color)
@@ -34,10 +34,10 @@ void DetectNode::OnStop() {
 void DetectNode::WorkLoop() {
   MV_LOG_INFO("DetectNode", "Worker started.");
 
-  while (!stop_requested_.load()) {
+  while (!ShouldStop()) {
     FramePacket frame_pkt;
-    if (!input_ch_->Pop(frame_pkt, kPopTimeout)) {
-      // 超时或通道关闭，回到循环顶部检查 stop_requested_
+    if (!input_ch_->Pop(frame_pkt, POP_TIMEOUT)) {
+      // 超时或通道关闭，回到循环顶部检查 ShouldStop()
       continue;
     }
 
@@ -67,11 +67,10 @@ void DetectNode::WorkLoop() {
       break;  // 通道关闭，退出
     }
 
-    ++processed_count_;
+    IncrementProcessed();
   }
 
-  MV_LOG_INFO("DetectNode", "Worker stopped. Processed {} packets.",
-              processed_count_.load());
+  MV_LOG_INFO("DetectNode", "Worker stopped. Processed {} packets.", ProcessedCount());
 }
 
 }  // namespace mv::pipeline

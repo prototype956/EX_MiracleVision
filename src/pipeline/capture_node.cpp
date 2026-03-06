@@ -10,12 +10,8 @@
 
 namespace mv::pipeline {
 
-// ── 使用较短超时（5ms）以便快速响应 Stop() ──────────────────────────────────
-static constexpr auto kPushTimeout = std::chrono::milliseconds{5};
-
 CaptureNode::CaptureNode(std::unique_ptr<hal::ICamera> camera,
-                         std::shared_ptr<Channel<FramePacket>> output_ch,
-                         int max_fail)
+                         std::shared_ptr<Channel<FramePacket>> output_ch, int max_fail)
     : PipelineNode("CaptureNode"),
       camera_(std::move(camera)),
       output_ch_(std::move(output_ch)),
@@ -34,15 +30,14 @@ void CaptureNode::WorkLoop() {
   uint64_t current_frame_id = 0;
   int fail_count = 0;
 
-  while (!stop_requested_.load()) {
+  while (!ShouldStop()) {
     cv::Mat frame;
     if (!camera_->Grab(frame) || frame.empty()) {
       ++fail_count;
       if (fail_count >= max_fail_) {
-        MV_LOG_ERROR("CaptureNode",
-                     "Grab() failed {} times consecutively. Setting error.",
+        MV_LOG_ERROR("CaptureNode", "Grab() failed {} times consecutively. Setting error.",
                      max_fail_);
-        error_code_.store(1);
+        SetError(1);
         break;
       }
       // 短暂等待后重试（防止 CPU 空转）
@@ -66,11 +61,10 @@ void CaptureNode::WorkLoop() {
       break;
     }
 
-    ++processed_count_;
+    IncrementProcessed();
   }
 
-  MV_LOG_INFO("CaptureNode", "Worker stopped. Processed {} frames.",
-              processed_count_.load());
+  MV_LOG_INFO("CaptureNode", "Worker stopped. Processed {} frames.", ProcessedCount());
 }
 
 }  // namespace mv::pipeline

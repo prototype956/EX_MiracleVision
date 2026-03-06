@@ -34,10 +34,10 @@
  */
 #pragma once
 
-#include "node.hpp"
-#include "packet.hpp"
 #include "channel.hpp"
 #include "hal/camera/i_camera.hpp"
+#include "node.hpp"
+#include "packet.hpp"
 
 #include <memory>
 
@@ -50,11 +50,15 @@ class CaptureNode final : public PipelineNode {
    * @param output_ch   输出通道（FramePacket）
    * @param max_fail    连续 Grab 失败超过此帧数触发错误
    */
-  CaptureNode(std::unique_ptr<hal::ICamera> camera,
-              std::shared_ptr<Channel<FramePacket>> output_ch,
+  CaptureNode(std::unique_ptr<hal::ICamera> camera, std::shared_ptr<Channel<FramePacket>> output_ch,
               int max_fail = 30);
 
   ~CaptureNode() override = default;
+
+  CaptureNode(const CaptureNode&) = delete;
+  CaptureNode& operator=(const CaptureNode&) = delete;
+  CaptureNode(CaptureNode&&) = delete;
+  CaptureNode& operator=(CaptureNode&&) = delete;
 
  protected:
   void WorkLoop() override;

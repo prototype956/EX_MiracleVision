@@ -175,6 +175,7 @@ class Channel {
   }
 
  private:
+  // NOLINTNEXTLINE(readability-identifier-naming)
   const size_t capacity_;
   mutable std::mutex mutex_;
   std::condition_variable not_empty_cv_;

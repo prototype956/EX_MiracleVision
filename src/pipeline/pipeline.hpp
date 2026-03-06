@@ -53,10 +53,6 @@
 #include "capture_node.hpp"
 #include "channel.hpp"
 #include "detect_node.hpp"
-#include "packet.hpp"
-#include "predict_node.hpp"
-#include "serial_node.hpp"
-
 #include "hal/camera/i_camera.hpp"
 #include "hal/serial/i_serial.hpp"
 #include "interfaces/i_detector.hpp"
@@ -65,6 +61,9 @@
 #include "interfaces/i_solver.hpp"
 #include "interfaces/i_voter.hpp"
 #include "interfaces/types.hpp"
+#include "packet.hpp"
+#include "predict_node.hpp"
+#include "serial_node.hpp"
 
 #include <atomic>
 #include <memory>
@@ -159,14 +158,14 @@ class VisionPipeline {
    * Stage 5 状态机调用此方法触发 ERROR 状态转换。
    */
   [[nodiscard]] bool CheckErrors() const noexcept {
-    return capture_node_->HasError() || detect_node_->HasError() ||
-           predict_node_->HasError() || serial_node_->HasError();
+    return capture_node_->HasError() || detect_node_->HasError() || predict_node_->HasError() ||
+           serial_node_->HasError();
   }
 
   /** @return 各节点是否全部在运行 */
   [[nodiscard]] bool IsRunning() const noexcept {
-    return capture_node_->IsRunning() && detect_node_->IsRunning() &&
-           predict_node_->IsRunning() && serial_node_->IsRunning();
+    return capture_node_->IsRunning() && detect_node_->IsRunning() && predict_node_->IsRunning() &&
+           serial_node_->IsRunning();
   }
 
   /** @return 共享状态引用（用于外部读写  enemy_color 等）*/
@@ -279,8 +278,7 @@ inline std::unique_ptr<VisionPipeline> VisionPipeline::Builder::Build() {
   // 检查必要依赖
   const auto CHECK = [](const auto& ptr, const char* name) {
     if (!ptr) {
-      throw std::invalid_argument(
-          std::string("VisionPipeline::Builder: missing ") + name);
+      throw std::invalid_argument(std::string("VisionPipeline::Builder: missing ") + name);
     }
   };
   CHECK(camera_, "Camera");
@@ -301,23 +299,18 @@ inline std::unique_ptr<VisionPipeline> VisionPipeline::Builder::Build() {
   pipeline->control_ch_ = std::make_shared<Channel<ControlPacket>>(control_cap_);
 
   // 创建节点（注入依赖）
-  pipeline->capture_node_ = std::make_unique<CaptureNode>(
-      std::move(camera_), pipeline->frame_ch_);
+  pipeline->capture_node_ = std::make_unique<CaptureNode>(std::move(camera_), pipeline->frame_ch_);
 
-  pipeline->detect_node_ = std::make_unique<DetectNode>(
-      std::move(detector_), std::move(solver_),
-      pipeline->frame_ch_, pipeline->detect_ch_,
-      pipeline->state_.enemy_color);
+  pipeline->detect_node_ =
+      std::make_unique<DetectNode>(std::move(detector_), std::move(solver_), pipeline->frame_ch_,
+                                   pipeline->detect_ch_, pipeline->state_.enemy_color);
 
-  pipeline->predict_node_ = std::make_unique<PredictNode>(
-      std::move(predictor_), std::move(voter_),
-      pipeline->detect_ch_, pipeline->control_ch_,
-      pipeline->state_.enemy_color);
+  pipeline->predict_node_ =
+      std::make_unique<PredictNode>(std::move(predictor_), std::move(voter_), pipeline->detect_ch_,
+                                    pipeline->control_ch_, pipeline->state_.enemy_color);
 
   pipeline->serial_node_ = std::make_unique<SerialNode>(
-      std::move(serial_), std::move(shooter_),
-      pipeline->control_ch_,
-      pipeline->state_.enemy_color);
+      std::move(serial_), std::move(shooter_), pipeline->control_ch_, pipeline->state_.enemy_color);
 
   return pipeline;
 }

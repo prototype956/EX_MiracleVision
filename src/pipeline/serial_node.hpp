@@ -35,11 +35,11 @@
  */
 #pragma once
 
+#include "channel.hpp"
+#include "hal/serial/i_serial.hpp"
+#include "interfaces/i_shooter.hpp"
 #include "node.hpp"
 #include "packet.hpp"
-#include "channel.hpp"
-#include "interfaces/i_shooter.hpp"
-#include "hal/serial/i_serial.hpp"
 
 #include <atomic>
 #include <memory>
@@ -55,13 +55,16 @@ class SerialNode final : public PipelineNode {
    * @param enemy_color  共享原子变量，更新后 DetectNode/PredictNode 自动使用
    * @param max_send_fail  连续发送失败超过此次数触发 error_code_
    */
-  SerialNode(std::unique_ptr<hal::ISerial> serial,
-             std::unique_ptr<IShooter> shooter,
-             std::shared_ptr<Channel<ControlPacket>> input_ch,
-             std::atomic<ArmorColor>& enemy_color,
+  SerialNode(std::unique_ptr<hal::ISerial> serial, std::unique_ptr<IShooter> shooter,
+             std::shared_ptr<Channel<ControlPacket>> input_ch, std::atomic<ArmorColor>& enemy_color,
              int max_send_fail = 30);
 
   ~SerialNode() override = default;
+
+  SerialNode(const SerialNode&) = delete;
+  SerialNode& operator=(const SerialNode&) = delete;
+  SerialNode(SerialNode&&) = delete;
+  SerialNode& operator=(SerialNode&&) = delete;
 
  protected:
   void WorkLoop() override;

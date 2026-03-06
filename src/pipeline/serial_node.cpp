@@ -22,18 +22,19 @@
 
 namespace mv::pipeline {
 
-static constexpr auto kPopTimeout = std::chrono::milliseconds{5};
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+static constexpr auto POP_TIMEOUT = std::chrono::milliseconds{5};
 
 // ── 上行帧结构（占位）────────────────────────────────────────────────────────
-static constexpr size_t kRecvFrameLen = 5;
-static constexpr uint8_t kRecvHeader = 0xAAU;
-static constexpr uint8_t kRecvFooter = 0x55U;
+// NOLINTBEGIN(cppcoreguidelines-avoid-non-const-global-variables)
+static constexpr size_t RECV_FRAME_LEN = 5;
+static constexpr uint8_t RECV_HEADER = 0xAAU;
+static constexpr uint8_t RECV_FOOTER = 0x55U;
+// NOLINTEND(cppcoreguidelines-avoid-non-const-global-variables)
 
-SerialNode::SerialNode(std::unique_ptr<hal::ISerial> serial,
-                       std::unique_ptr<IShooter> shooter,
+SerialNode::SerialNode(std::unique_ptr<hal::ISerial> serial, std::unique_ptr<IShooter> shooter,
                        std::shared_ptr<Channel<ControlPacket>> input_ch,
-                       std::atomic<ArmorColor>& enemy_color,
-                       int max_send_fail)
+                       std::atomic<ArmorColor>& enemy_color, int max_send_fail)
     : PipelineNode("SerialNode"),
       serial_(std::move(serial)),
       shooter_(std::move(shooter)),
@@ -52,9 +53,9 @@ void SerialNode::WorkLoop() {
 
   int send_fail_count = 0;
 
-  while (!stop_requested_.load()) {
+  while (!ShouldStop()) {
     ControlPacket ctrl_pkt;
-    if (!input_ch_->Pop(ctrl_pkt, kPopTimeout)) {
+    if (!input_ch_->Pop(ctrl_pkt, POP_TIMEOUT)) {
       // 超时时也尝试接收上行（保持串口接收响应性）
       TryRecv();
       continue;
@@ -64,12 +65,10 @@ void SerialNode::WorkLoop() {
     const bool SENT = shooter_->Send(*serial_, ctrl_pkt.control);
     if (!SENT) {
       ++send_fail_count;
-      MV_LOG_WARN("SerialNode", "Send failed ({}/{}).", send_fail_count,
-                  max_send_fail_);
+      MV_LOG_WARN("SerialNode", "Send failed ({}/{}).", send_fail_count, max_send_fail_);
       if (send_fail_count >= max_send_fail_) {
-        MV_LOG_ERROR("SerialNode", "Serial send failed {} times. Setting error.",
-                     max_send_fail_);
-        error_code_.store(2);
+        MV_LOG_ERROR("SerialNode", "Serial send failed {} times. Setting error.", max_send_fail_);
+        SetError(2);
         break;
       }
     } else {
@@ -79,11 +78,10 @@ void SerialNode::WorkLoop() {
     // ── 上行：尝试接收下位机反馈 ─────────────────────────────────────────
     TryRecv();
 
-    ++processed_count_;
+    IncrementProcessed();
   }
 
-  MV_LOG_INFO("SerialNode", "Worker stopped. Processed {} packets.",
-              processed_count_.load());
+  MV_LOG_INFO("SerialNode", "Worker stopped. Processed {} packets.", ProcessedCount());
 }
 
 void SerialNode::TryRecv() {
@@ -91,18 +89,18 @@ void SerialNode::TryRecv() {
     return;
   }
 
-  std::array<uint8_t, kRecvFrameLen> buf{};
+  std::array<uint8_t, RECV_FRAME_LEN> buf{};
   std::size_t received = 0;
 
-  const bool GOT_DATA = serial_->Recv(buf.data(), kRecvFrameLen, received);
-  if (!GOT_DATA || received < kRecvFrameLen) {
+  const bool GOT_DATA = serial_->Recv(buf.data(), RECV_FRAME_LEN, received);
+  if (!GOT_DATA || received < RECV_FRAME_LEN) {
     return;  // 超时或数据不足，等下一帧
   }
 
   // 帧头/帧尾校验
-  if (buf[0] != kRecvHeader || buf[kRecvFrameLen - 1] != kRecvFooter) {
-    MV_LOG_WARN("SerialNode", "Invalid recv frame header/footer: {:#02x} ... {:#02x}",
-                buf[0], buf[kRecvFrameLen - 1]);
+  if (buf[0] != RECV_HEADER || buf[RECV_FRAME_LEN - 1] != RECV_FOOTER) {
+    MV_LOG_WARN("SerialNode", "Invalid recv frame header/footer: {:#02x} ... {:#02x}", buf[0],
+                buf[RECV_FRAME_LEN - 1]);
     return;
   }
 

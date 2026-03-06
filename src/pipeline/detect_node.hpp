@@ -61,6 +61,11 @@ class DetectNode final : public PipelineNode {
 
   ~DetectNode() override = default;
 
+  DetectNode(const DetectNode&) = delete;
+  DetectNode& operator=(const DetectNode&) = delete;
+  DetectNode(DetectNode&&) = delete;
+  DetectNode& operator=(DetectNode&&) = delete;
+
  protected:
   void WorkLoop() override;
   void OnStop() override;

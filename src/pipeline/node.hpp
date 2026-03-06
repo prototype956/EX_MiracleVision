@@ -109,9 +109,7 @@ class PipelineNode {
   [[nodiscard]] int ErrorCode() const noexcept { return error_code_.load(); }
 
   /** @return 已处理的数据包数量 */
-  [[nodiscard]] uint64_t ProcessedCount() const noexcept {
-    return processed_count_.load();
-  }
+  [[nodiscard]] uint64_t ProcessedCount() const noexcept { return processed_count_.load(); }
 
  protected:
   // ── 派生类实现 ────────────────────────────────────────────────────────────
@@ -148,16 +146,25 @@ class PipelineNode {
    */
   virtual void OnStop() {}
 
-  // ── 子类可读写的原子成员 ─────────────────────────────────────────────────
+  // ── 派生类便捷访问方法（避免暴露原子成员为 protected）──────────────────────
+
+  /** @brief WorkLoop() 内检查是否应退出 */
+  [[nodiscard]] bool ShouldStop() const noexcept { return stop_requested_.load(); }
+
+  /** @brief 设置不可恢复错误码（WorkLoop 内调用，触发 HasError()）*/
+  void SetError(int code) noexcept { error_code_.store(code); }
+
+  /** @brief 递增已处理包计数 */
+  void IncrementProcessed() noexcept { ++processed_count_; }
+
+ private:
+  std::string name_;
+  std::thread worker_;
 
   std::atomic<bool> stop_requested_{false};
   std::atomic<bool> running_{false};
   std::atomic<int> error_code_{0};
   std::atomic<uint64_t> processed_count_{0};
-
- private:
-  std::string name_;
-  std::thread worker_;
 };
 
 }  // namespace mv::pipeline

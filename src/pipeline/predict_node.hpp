@@ -28,11 +28,11 @@
  */
 #pragma once
 
-#include "node.hpp"
-#include "packet.hpp"
 #include "channel.hpp"
 #include "interfaces/i_predictor.hpp"
 #include "interfaces/i_voter.hpp"
+#include "node.hpp"
+#include "packet.hpp"
 
 #include <atomic>
 #include <memory>
@@ -48,13 +48,17 @@ class PredictNode final : public PipelineNode {
    * @param output_ch   输出通道（ControlPacket）
    * @param enemy_color 共享原子变量，由 SerialNode 更新
    */
-  PredictNode(std::unique_ptr<IPredictor> predictor,
-              std::unique_ptr<IVoter> voter,
+  PredictNode(std::unique_ptr<IPredictor> predictor, std::unique_ptr<IVoter> voter,
               std::shared_ptr<Channel<DetectPacket>> input_ch,
               std::shared_ptr<Channel<ControlPacket>> output_ch,
               std::atomic<ArmorColor>& enemy_color);
 
   ~PredictNode() override = default;
+
+  PredictNode(const PredictNode&) = delete;
+  PredictNode& operator=(const PredictNode&) = delete;
+  PredictNode(PredictNode&&) = delete;
+  PredictNode& operator=(PredictNode&&) = delete;
 
  protected:
   void WorkLoop() override;

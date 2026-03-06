@@ -8,10 +8,10 @@
 
 namespace mv::pipeline {
 
-static constexpr auto kPopTimeout = std::chrono::milliseconds{10};
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+static constexpr auto POP_TIMEOUT = std::chrono::milliseconds{10};
 
-PredictNode::PredictNode(std::unique_ptr<IPredictor> predictor,
-                         std::unique_ptr<IVoter> voter,
+PredictNode::PredictNode(std::unique_ptr<IPredictor> predictor, std::unique_ptr<IVoter> voter,
                          std::shared_ptr<Channel<DetectPacket>> input_ch,
                          std::shared_ptr<Channel<ControlPacket>> output_ch,
                          std::atomic<ArmorColor>& enemy_color)
@@ -34,17 +34,16 @@ void PredictNode::OnStop() {
 void PredictNode::WorkLoop() {
   MV_LOG_INFO("PredictNode", "Worker started.");
 
-  while (!stop_requested_.load()) {
+  while (!ShouldStop()) {
     DetectPacket det_pkt;
-    if (!input_ch_->Pop(det_pkt, kPopTimeout)) {
+    if (!input_ch_->Pop(det_pkt, POP_TIMEOUT)) {
       continue;
     }
 
     const ArmorColor COLOR = enemy_color_.load();
 
     // ── 预测（EKF 跟踪 + 云台角度输出）──────────────────────────────────
-    GimbalControl control =
-        predictor_->Predict(det_pkt.detections, det_pkt.timestamp, COLOR);
+    GimbalControl control = predictor_->Predict(det_pkt.detections, det_pkt.timestamp, COLOR);
 
     // ── 跟踪状态快照（供 Voter 决策 + Foxglove 可视化）────────────────
     const TrackTarget TARGET = predictor_->GetTrackTarget();
@@ -63,11 +62,10 @@ void PredictNode::WorkLoop() {
       break;  // 通道关闭，退出
     }
 
-    ++processed_count_;
+    IncrementProcessed();
   }
 
-  MV_LOG_INFO("PredictNode", "Worker stopped. Processed {} packets.",
-              processed_count_.load());
+  MV_LOG_INFO("PredictNode", "Worker stopped. Processed {} packets.", ProcessedCount());
 }
 
 }  // namespace mv::pipeline
