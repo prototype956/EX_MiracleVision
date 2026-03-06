@@ -17,10 +17,16 @@ add_subdirectory(hal)
 # 阶段三：接口层 + 工厂系统
 add_subdirectory(interfaces)
 add_subdirectory(factory)
-# add_subdirectory(modules)  # 待实现：具体算法模块（装甲板检测器、预测器等）
+add_subdirectory(modules)  # Stage 6：具体算法模块（装甲板检测器、解算器、预测器等）
 
 # 阶段四：线程 Pipeline
 add_subdirectory(pipeline)
 
 # 阶段五：状态机
 add_subdirectory(fsm)
+
+# 调试工具库（ParamTuner / ViewRenderer / DebugSession）
+add_subdirectory(tool)
+
+# 测试程序（冒烟测试 + 离线视频测试）
+add_subdirectory(test)
