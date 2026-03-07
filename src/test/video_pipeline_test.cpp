@@ -17,7 +17,7 @@
  *   l → 切换视频循环播放（默认开启，仅对视频文件有效）
  *
  * 调试基础设施（窗口 / Trackbar / FPS / 写回 YAML）
- * 均由 src/tool/debug_session.hpp 提供，本文件仅含视觉业务逻辑。
+ * 均由 src/tool/debug/debug_session.hpp 提供，本文件仅含视觉业务逻辑。
  */
 
 #include "core/config.hpp"

@@ -87,6 +87,10 @@ dbg.AddParam({"MaxAngle x10   ", "max_light_angle",
 // 4. 绑定自定义按键（q/ESC/空格/1–4 已内置）
 dbg.BindKey('s', [&dbg] { dbg.SaveParams(); });
 
+// 视频循环播放（仅文件源，摄像头流无需此逻辑）
+bool loop_video = is_file_source;   // 视频文件时默认开启
+dbg.BindKey('l', [&loop_video] { loop_video = !loop_video; });
+
 // 5. 主循环
 cv::Mat frame;
 while (true) {
@@ -98,6 +102,14 @@ while (true) {
     detector.SetParams(params);  // params → 检测器
 
     camera.Grab(frame);
+
+    // 视频循环：Grab 失败时重新 Open（摄像头流不受影响）
+    if (frame.empty() && loop_video) {
+        camera.Close();
+        camera.Open(cam_cfg);
+        predictor.Init(root_cfg);  // 重置跨帧状态
+        continue;
+    }
 
     auto t   = std::chrono::steady_clock::now();
     auto det = detector.Detect(frame, ENEMY_COLOR);
@@ -165,6 +177,13 @@ struct ParamDesc {
 | `3` | 视图：二值化图（binary）|
 | `4` | 视图：灯条可视化图（lights）|
 
+### `mv-video-test` 自定义按键
+
+| 按键 | 动作 |
+|------|------|
+| `s` | 将当前 Trackbar 参数写入 `debug_override.yaml` |
+| `l` | 切换视频循环播放开/关（仅对视频文件有效；默认**开启**）|
+
 ---
 
 ## 5. 视图说明
@@ -176,11 +195,35 @@ struct ParamDesc {
 | 3 | `BINARY` | 二值化后的掩码图，用于判断灯条是否被正确提取 |
 | 4 | `LIGHTS` | 原图叠加灯条轮廓（每根灯条通过筛选后绘制黄色旋转矩形）|
 
-主窗口每种视图均叠加 HUD（左上：帧号/FPS/视图名/按键提示；右上：当前参数摘要）。debugg 辅助窗口始终显示二值化图 + 参数单行摘要，同时承载全部 Trackbar。
+主窗口每种视图均叠加 HUD（左上：帧号/FPS/视图名/按键提示；右上：当前参数摘要）。debug 辅助窗口始终显示二值化图 + 参数单行摘要，同时承载全部 Trackbar。
 
 ---
 
-## 6. 参数持久化
+## 6. 视频循环播放
+
+调试视频往往较短，开启循环可反复观察同一段素材并实时调整参数。
+
+**行为：**
+- 输入为**视频文件**时 `loop_video` 默认 `true`，播放末尾自动从头循环
+- 输入为**摄像头实时流**时 `loop_video` 始终 `false`，流断开时正常退出
+- 按 `l` 键随时切换开/关，终端打印当前状态
+
+**实现要点：**
+```cpp
+if (!camera.Grab(frame) || frame.empty()) {
+    if (loop_video && is_file_source) {
+        camera.Close();
+        camera.Open(cam_cfg);     // VideoCapture 重新定位到帧 0
+        predictor.Init(root_cfg); // 清除跨帧跟踪历史，防止状态污染
+        continue;
+    }
+    break;  // 非循环模式或摄像头断开 → 正常退出
+}
+```
+
+---
+
+## 7. 参数持久化
 
 按 `s`（或调用 `dbg.SaveParams()`）时，所有参数以当前浮点值写入 `Config::save_yaml`，YAML section 默认为 `armor_detector`：
 
@@ -198,7 +241,7 @@ armor_detector:
 
 ---
 
-## 7. 扩展 / Foxglove 预留
+## 8. 扩展 / Foxglove 预留
 
 `DebugSession::Impl` 预留了 `FoxgloveSink` 插槽：
 
@@ -210,7 +253,7 @@ test 程序侧代码**零改动**。
 
 ---
 
-## 8. 目录结构
+## 9. 目录结构
 
 ```
 src/tool/
