@@ -39,179 +39,224 @@
 
 #include <yaml-cpp/yaml.h>
 
-int main(int argc, char** argv) {
-  // ── 1. 解析相机/视频源 ───────────────────────────────────────────────────
+namespace {
+
+// ── 辅助函数 1：解析命令行参数 ─────────────────────────────────────────────
+
+std::pair<YAML::Node, bool> ParseArgs(int argc, char** argv) {
   YAML::Node cam_cfg;
-  bool is_file_source = false;  // 是否为视频文件（而非摄像头索引）
+  bool is_file_source = false;
+
   if (argc > 1) {
-    const std::string src(argv[1]);
-    const bool is_index = !src.empty() && std::all_of(src.begin(), src.end(), [](unsigned char c) {
-      return std::isdigit(c) != 0;
-    });
-    if (is_index) {
-      cam_cfg["source"] = std::stoi(src);
+    const std::string SRC(argv[1]);
+    const bool IS_INDEX = !SRC.empty() &&
+        std::all_of(SRC.begin(), SRC.end(),
+                    [](unsigned char chr) { return std::isdigit(chr) != 0; });
+    if (IS_INDEX) {
+      cam_cfg["source"] = std::stoi(SRC);
     } else {
-      cam_cfg["source"] = src;
+      cam_cfg["source"] = SRC;
       is_file_source = true;
     }
   } else {
     cam_cfg["source"] = 0;
   }
 
-  // ── 2. 加载配置 + 初始化 Logger ─────────────────────────────────────────
-  auto& cfg = mv::ConfigManager::Instance();
+  return {cam_cfg, is_file_source};
+}
+
+// ── 辅助函数 2：初始化算法模块 ─────────────────────────────────────────────
+
+bool InitModules(mv::modules::BasicArmorDetector& detector,
+                 mv::modules::PnpSolver& solver,
+                 mv::modules::SimplePredictor& predictor,
+                 const YAML::Node& root_cfg) {
+  return detector.Init(root_cfg) && solver.Init(root_cfg) && predictor.Init(root_cfg);
+}
+
+// ── 辅助函数 3：视频帧采集失败时的重开逻辑 ────────────────────────────────
+
+/**
+ * @brief 视频播完后尝试重新打开以循环播放。
+ * @return true → 应 continue 主循环；false → 应 break（无法重开或非视频文件）
+ */
+bool HandleEndOfSource(bool loop_video, bool is_file_source,
+                        mv::hal::OpenCvCamera& camera,
+                        const YAML::Node& cam_cfg,
+                        mv::modules::SimplePredictor& predictor,
+                        const YAML::Node& root_cfg) {
+  if (!loop_video || !is_file_source) {
+    return false;
+  }
+  camera.Close();
+  if (!camera.Open(cam_cfg)) {
+    MV_LOG_ERROR("video-test", "视频重新打开失败，退出");
+    return false;
+  }
+  predictor.Init(root_cfg);
+  MV_LOG_INFO("video-test", "视频循环重新播放");
+  return true;
+}
+
+// ── 辅助函数 4：注册 Trackbar 参数 ─────────────────────────────────────────
+
+void RegisterDetectorParams(mv::tool::DebugSession& dbg,
+                            mv::modules::BasicArmorDetector::Params& params) {
+  dbg.AddParam({"Thresh         ", "light_thresh", params.light_thresh, 255,
+                [&params](int val) { params.light_thresh = val; },
+                [&params] { return static_cast<double>(params.light_thresh); }});
+
+  dbg.AddParam({"GreenThresh    ", "green_thresh", params.green_thresh, 255,
+                [&params](int val) { params.green_thresh = val; },
+                [&params] { return static_cast<double>(params.green_thresh); }});
+
+  dbg.AddParam({"WhiteThresh    ", "white_thresh", params.white_thresh, 255,
+                [&params](int val) { params.white_thresh = val; },
+                [&params] { return static_cast<double>(params.white_thresh); }});
+
+  dbg.AddParam({"MaxAngle x10   ", "max_light_angle",
+                static_cast<int>(params.max_light_angle * 10.F), 900,
+                [&params](int val) { params.max_light_angle = static_cast<float>(val) / 10.F; },
+                [&params] { return static_cast<double>(params.max_light_angle); }});
+
+  dbg.AddParam({"MaxLightR x100 ", "max_light_ratio",
+                static_cast<int>(params.max_light_ratio * 100.F), 100,
+                [&params](int val) { params.max_light_ratio = static_cast<float>(val) / 100.F; },
+                [&params] { return static_cast<double>(params.max_light_ratio); }});
+
+  dbg.AddParam({"MinLightR x100 ", "min_light_ratio",
+                static_cast<int>(params.min_light_ratio * 100.F), 100,
+                [&params](int val) { params.min_light_ratio = static_cast<float>(val) / 100.F; },
+                [&params] { return static_cast<double>(params.min_light_ratio); }});
+
+  dbg.AddParam({"MinArmorR x10  ", "min_armor_ratio",
+                static_cast<int>(params.min_armor_ratio * 10.F), 100,
+                [&params](int val) { params.min_armor_ratio = static_cast<float>(val) / 10.F; },
+                [&params] { return static_cast<double>(params.min_armor_ratio); }});
+
+  dbg.AddParam({"MaxArmorR x10  ", "max_armor_ratio",
+                static_cast<int>(params.max_armor_ratio * 10.F), 100,
+                [&params](int val) { params.max_armor_ratio = static_cast<float>(val) / 10.F; },
+                [&params] { return static_cast<double>(params.max_armor_ratio); }});
+
+  dbg.AddParam({"AngleDiff x10  ", "max_angle_diff",
+                static_cast<int>(params.max_angle_diff * 10.F), 900,
+                [&params](int val) { params.max_angle_diff = static_cast<float>(val) / 10.F; },
+                [&params] { return static_cast<double>(params.max_angle_diff); }});
+
+  dbg.AddParam({"MinArea        ", "min_area", static_cast<int>(params.min_area), 500,
+                [&params](int val) { params.min_area = static_cast<float>(val); },
+                [&params] { return static_cast<double>(params.min_area); }});
+}
+
+}  // namespace
+
+// ── main ──────────────────────────────────────────────────────────────────────
+
+int main(int argc, char** argv) {
   try {
+    // ── 1. 解析命令行参数 ────────────────────────────────────────────────────
+    const auto [cam_cfg, is_file_source] = ParseArgs(argc, argv);
+
+    // ── 2. 加载配置 + 初始化 Logger ─────────────────────────────────────────
+    auto& cfg = mv::ConfigManager::Instance();
     cfg.Load(CONFIG_FILE_PATH "/vision.yaml");
+    mv::Logger::Instance().Init("logs", spdlog::level::info, true);
+    MV_LOG_INFO("video-test", "══════════ mv-video-test 启动 ══════════");
+
+    // ── 3. 初始化算法模块 ────────────────────────────────────────────────────
+    const YAML::Node ROOT_CFG = cfg.Subtree();
+
+    mv::modules::BasicArmorDetector detector;
+    mv::modules::PnpSolver solver;
+    mv::modules::SimplePredictor predictor;
+
+    if (!InitModules(detector, solver, predictor, ROOT_CFG)) {
+      MV_LOG_ERROR("video-test", "模块初始化失败");
+      return EXIT_FAILURE;
+    }
+    detector.EnableDebug(true);
+    MV_LOG_INFO("video-test", "所有模块初始化成功");
+
+    // ── 4. 打开相机/视频 ─────────────────────────────────────────────────────
+    mv::hal::OpenCvCamera camera;
+    if (!camera.Open(cam_cfg)) {
+      MV_LOG_ERROR("video-test", "无法打开图像源");
+      return EXIT_FAILURE;
+    }
+    MV_LOG_INFO("video-test", "图像源打开成功");
+
+    // ── 5. 配置 DebugSession ─────────────────────────────────────────────────
+    mv::tool::DebugSession dbg;
+    dbg.Init({.main_window = "mv-video-test",
+              .debug_window = "mv-video-debug",
+              .save_yaml = std::string(CONFIG_FILE_PATH) + "/debug/debug_override.yaml"});
+
+    auto params = detector.GetParams();
+    RegisterDetectorParams(dbg, params);
+
+    dbg.BindKey('s', [&dbg] { dbg.SaveParams(); });
+
+    bool loop_video = is_file_source;
+    dbg.BindKey('l', [&loop_video] { loop_video = !loop_video; });
+
+    // ── 6. 读取敌方颜色 + 切换键 ────────────────────────────────────────────
+    const auto ENEMY_STR_INIT = cfg.Get<std::string>("auto_aim.enemy_color", "red");
+    mv::ArmorColor enemy_color =
+        (ENEMY_STR_INIT == "blue") ? mv::ArmorColor::BLUE : mv::ArmorColor::RED;
+    MV_LOG_INFO("video-test", "敌方颜色: {}", ENEMY_STR_INIT);
+
+    dbg.BindKey('c', [&enemy_color] {
+      enemy_color =
+          (enemy_color == mv::ArmorColor::RED) ? mv::ArmorColor::BLUE : mv::ArmorColor::RED;
+    });
+
+    // ── 7. 主循环 ────────────────────────────────────────────────────────────
+    cv::Mat frame;
+
+    while (true) {
+      const auto [quit, paused] = dbg.Poll();
+      if (quit) {
+        break;
+      }
+      if (paused) {
+        continue;
+      }
+
+      dbg.ApplyParams();
+      detector.SetParams(params);
+
+      if (!camera.Grab(frame) || frame.empty()) {
+        if (HandleEndOfSource(loop_video, is_file_source, camera, cam_cfg, predictor, ROOT_CFG)) {
+          continue;
+        }
+        MV_LOG_INFO("video-test", "视频结束或相机断开");
+        break;
+      }
+
+      const auto T_FRAME = std::chrono::steady_clock::now();
+      auto detections = detector.Detect(frame, enemy_color);
+      for (auto& det : detections) {
+        solver.Solve(det);
+      }
+      const mv::GimbalControl CTRL = predictor.Predict(detections, T_FRAME, enemy_color);
+
+      const std::string STATUS = std::string("Enemy: ") +
+                                 ((enemy_color == mv::ArmorColor::RED) ? "RED" : "BLUE") +
+                                 std::string("  [c]toggle");
+      dbg.TickFrame(!detections.empty(), static_cast<int>(detections.size()));
+      dbg.Feed(frame, detector.GetDebugData(), detections, CTRL, detector.GetParams(), STATUS);
+    }
+
+    // ── 8. 统计输出 + 清理 ───────────────────────────────────────────────────
+    dbg.PrintStats();
+    camera.Close();
+    MV_LOG_INFO("video-test", "══════════ mv-video-test 结束 ══════════");
+
   } catch (const std::exception& exc) {
     std::cerr << "[video-test] FATAL: " << exc.what() << "\n";
     return EXIT_FAILURE;
   }
-  mv::Logger::Instance().Init("logs", spdlog::level::info, true);
-  MV_LOG_INFO("video-test", "══════════ mv-video-test 启动 ══════════");
 
-  // ── 3. 初始化算法模块 ────────────────────────────────────────────────────
-  const YAML::Node root_cfg = cfg.Subtree();
-
-  mv::modules::BasicArmorDetector detector;
-  mv::modules::PnpSolver solver;
-  mv::modules::SimplePredictor predictor;
-
-  if (!detector.Init(root_cfg) || !solver.Init(root_cfg) || !predictor.Init(root_cfg)) {
-    MV_LOG_ERROR("video-test", "模块初始化失败");
-    return EXIT_FAILURE;
-  }
-  detector.EnableDebug(true);
-  MV_LOG_INFO("video-test", "所有模块初始化成功");
-
-  // ── 4. 打开相机/视频 ─────────────────────────────────────────────────────
-  mv::hal::OpenCvCamera camera;
-  if (!camera.Open(cam_cfg)) {
-    MV_LOG_ERROR("video-test", "无法打开图像源，请通过 argv[1] 指定视频路径或摄像头索引");
-    return EXIT_FAILURE;
-  }
-  MV_LOG_INFO("video-test", "图像源打开成功");
-
-  // ── 5. 配置 DebugSession ─────────────────────────────────────────────────
-  mv::tool::DebugSession dbg;
-  dbg.Init({.main_window = "mv-video-test",
-            .debug_window = "mv-video-debug",
-            .save_yaml = std::string(CONFIG_FILE_PATH) + "/debug/debug_override.yaml"});
-
-  // 注册可调参数（lambda 按引用捕获本地 params，每帧由 ApplyParams() 推送）
-  auto params = detector.GetParams();
-  dbg.AddParam({"Thresh         ", "light_thresh", params.light_thresh, 255,
-                [&params](int v) { params.light_thresh = v; },
-                [&params] { return static_cast<double>(params.light_thresh); }});
-  dbg.AddParam({"GreenThresh    ", "green_thresh", params.green_thresh, 255,
-                [&params](int v) { params.green_thresh = v; },
-                [&params] { return static_cast<double>(params.green_thresh); }});
-  dbg.AddParam({"WhiteThresh    ", "white_thresh", params.white_thresh, 255,
-                [&params](int v) { params.white_thresh = v; },
-                [&params] { return static_cast<double>(params.white_thresh); }});
-  dbg.AddParam({"MaxAngle x10   ", "max_light_angle",
-                static_cast<int>(params.max_light_angle * 10.F), 900,
-                [&params](int v) { params.max_light_angle = static_cast<float>(v) / 10.F; },
-                [&params] { return static_cast<double>(params.max_light_angle); }});
-  dbg.AddParam({"MaxLightR x100 ", "max_light_ratio",
-                static_cast<int>(params.max_light_ratio * 100.F), 100,
-                [&params](int v) { params.max_light_ratio = static_cast<float>(v) / 100.F; },
-                [&params] { return static_cast<double>(params.max_light_ratio); }});
-  dbg.AddParam({"MinLightR x100 ", "min_light_ratio",
-                static_cast<int>(params.min_light_ratio * 100.F), 100,
-                [&params](int v) { params.min_light_ratio = static_cast<float>(v) / 100.F; },
-                [&params] { return static_cast<double>(params.min_light_ratio); }});
-  dbg.AddParam({"MinArmorR x10  ", "min_armor_ratio",
-                static_cast<int>(params.min_armor_ratio * 10.F), 100,
-                [&params](int v) { params.min_armor_ratio = static_cast<float>(v) / 10.F; },
-                [&params] { return static_cast<double>(params.min_armor_ratio); }});
-  dbg.AddParam({"MaxArmorR x10  ", "max_armor_ratio",
-                static_cast<int>(params.max_armor_ratio * 10.F), 100,
-                [&params](int v) { params.max_armor_ratio = static_cast<float>(v) / 10.F; },
-                [&params] { return static_cast<double>(params.max_armor_ratio); }});
-  dbg.AddParam({"AngleDiff x10  ", "max_angle_diff", static_cast<int>(params.max_angle_diff * 10.F),
-                900, [&params](int v) { params.max_angle_diff = static_cast<float>(v) / 10.F; },
-                [&params] { return static_cast<double>(params.max_angle_diff); }});
-  dbg.AddParam({"MinArea        ", "min_area", static_cast<int>(params.min_area), 500,
-                [&params](int v) { params.min_area = static_cast<float>(v); },
-                [&params] { return static_cast<double>(params.min_area); }});
-
-  // 'q'/'ESC'/空格/1-4 已由 DebugSession 内置注册
-  dbg.BindKey('s', [&dbg] { dbg.SaveParams(); });
-
-  // 'l'：切换视频循环播放（仅当 is_file_source 时生效）
-  bool loop_video = is_file_source;  // 视频文件时默认开启
-  dbg.BindKey('l', [&loop_video] {
-    loop_video = !loop_video;
-    MV_LOG_INFO("video-test", "循环播放: {}", loop_video ? "开" : "关");
-  });
-
-  // ── 6. 读取敌方颜色 ──────────────────────────────────────────────────────
-  const std::string ENEMY_STR_INIT = cfg.Get<std::string>("auto_aim.enemy_color", "red");
-  mv::ArmorColor enemy_color =
-      (ENEMY_STR_INIT == "blue") ? mv::ArmorColor::BLUE : mv::ArmorColor::RED;
-  MV_LOG_INFO("video-test", "敌方颜色: {}", ENEMY_STR_INIT);
-
-  // 'c' 键切换识别颜色
-  dbg.BindKey('c', [&enemy_color] {
-    enemy_color = (enemy_color == mv::ArmorColor::RED) ? mv::ArmorColor::BLUE : mv::ArmorColor::RED;
-    MV_LOG_INFO("video-test", "切换识别颜色 → {}",
-                (enemy_color == mv::ArmorColor::RED) ? "RED" : "BLUE");
-  });
-
-  // ── 7. 主循环 ────────────────────────────────────────────────────────────
-  cv::Mat frame;
-
-  while (true) {
-    // 处理按键；paused 时不采集新帧
-    const auto [quit, paused] = dbg.Poll();
-    if (quit) {
-      break;
-    }
-    if (paused) {
-      continue;
-    }
-
-    // Trackbar → params → detector
-    dbg.ApplyParams();
-    detector.SetParams(params);
-
-    // 采集帧
-    if (!camera.Grab(frame) || frame.empty()) {
-      if (loop_video && is_file_source) {
-        // 视频播放完毕 → 关闭并重新打开，从头开始
-        camera.Close();
-        if (!camera.Open(cam_cfg)) {
-          MV_LOG_ERROR("video-test", "视频重新打开失败，退出");
-          break;
-        }
-        predictor.Init(root_cfg);  // 重置预测器，避免跨帧状态污染
-        MV_LOG_INFO("video-test", "视频循环重新播放");
-        continue;
-      }
-      MV_LOG_INFO("video-test", "视频结束或相机断开");
-      break;
-    }
-
-    // 检测 → 解算 → 预测
-    const auto t_frame = std::chrono::steady_clock::now();
-    auto detections = detector.Detect(frame, enemy_color);
-    for (auto& det : detections) {
-      solver.Solve(det);
-    }
-    const mv::GimbalControl ctrl = predictor.Predict(detections, t_frame, enemy_color);
-
-    // 统计 + 渲染
-    const std::string status = std::string("Enemy: ") +
-                               ((enemy_color == mv::ArmorColor::RED) ? "RED" : "BLUE") +
-                               std::string("  [c]toggle");
-    dbg.TickFrame(!detections.empty(), static_cast<int>(detections.size()));
-    dbg.Feed(frame, detector.GetDebugData(), detections, ctrl, detector.GetParams(), status);
-  }
-
-  // ── 8. 统计输出 + 清理 ───────────────────────────────────────────────────
-  dbg.PrintStats();
-  camera.Close();
-  // cv::destroyAllWindows() 由 DebugSession 析构时自动调用
-  MV_LOG_INFO("video-test", "══════════ mv-video-test 结束 ══════════");
   return EXIT_SUCCESS;
 }

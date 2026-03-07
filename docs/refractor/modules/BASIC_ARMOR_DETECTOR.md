@@ -1,7 +1,7 @@
 # BasicArmor 检测器：原始实现分析 & 重构优化说明
 
-> 文档版本：2026-03-07  
-> 对应提交：refactor/core-infra（≥600dacc）
+> 文档版本：2026-03-12  
+> 对应提交：refactor/core-infra（≥f9fabc9）
 
 ---
 
@@ -182,7 +182,7 @@ target = armor_[0];  // 取最近目标
 | 白色硬掩码 | ✅ `whitePretreat` | ❌ 缺失 | ✅ 增加（修复）|
 | 灰度亮度门控 | ✅ 独立 `grayPretreat` | ❌ 合并为单阈值 | 合并保留（单阈值足够）|
 | 形态学 | dilate + medianBlur | dilate only | dilate + **morphClose**（填孔）|
-| 轮廓拟合 | `fitEllipse` | `minAreaRect` | `minAreaRect`（保留，精度够）|
+| TILT 计算 | `fitEllipse`（0=垂直）| `minAreaRect.angle`（swap 后错误）| **`fitEllipse`（修复，与原始一致）**|
 | ROI 颜色验证 | ✅ `colorCheck` | ❌ 缺失 | ❌ 暂不加（复杂度换简洁）|
 | 装甲内部暗区验证 | ✅ `averageColor < 30` | ❌ 缺失 | ❌ 暂不加（留后续迭代）|
 | 目标选择 | 距图像中心最近 | 全部输出（由外层选） | 全部输出（保持接口一致）|
@@ -233,7 +233,28 @@ struct Params {
 
 ---
 
-## 8. 相关文件索引
+## 8. Pimpl 架构与子函数（重构版）
+
+`BasicArmorDetector` 采用 **Pimpl 模式**，头文件仅暴露公开接口，实现细节隐藏于 `Impl` struct。
+
+```
+bscArmorDetector（头文件）
+  ├─ Params         — 可 Hot-reload 的算法参数
+  ├─ DebugData      — diff / binary 调试图像（lights_vis 已移出）
+  └─ std::unique_ptr<Impl> impl_
+          ├─ MakeBinary(frame, color)     → 三路融合二值图
+          ├─ FindLightBars(binary, frame) → 灯条几何过滤，返回 vector<LightBar>
+          ├─ IsValidArmor(la, lb)         → 双灯条配对合法性检查
+          └─ MakeDetection(la, lb)        → 构造 Detection 对象
+```
+
+**灯条可视化**（原 `DebugData::lights_vis` 已移除）改由 `src/tool/debug/light_vis_painter.hpp`
+提供的 `PaintLightBarsVis(binary, raw_frame, params)` 自由函数完成，
+在 `ViewRenderer::Render()` 的 `LIGHTS` 分支调用，与检测逻辑完全解耦。
+
+---
+
+## 9. 相关文件索引
 
 | 文件 | 说明 |
 |------|------|
@@ -241,6 +262,7 @@ struct Params {
 | `module/armor/basic_armor.cpp` | 原始检测实现（共 949 行）|
 | `module/armor/basic_armor.hpp` | 原始配置结构体（Armor_Config 等）|
 | `src/modules/armor_detector/basic_armor_detector.hpp` | 重构接口 + Params + DebugData |
-| `src/modules/armor_detector/basic_armor_detector.cpp` | 重构实现（优化后）|
+| `src/modules/armor_detector/basic_armor_detector.cpp` | 重构实现（Pimpl + 子函数：`MakeBinary`/`FindLightBars`/`IsValidArmor`/`MakeDetection`）|
+| `src/tool/debug/light_vis_painter.hpp/.cpp` | 灯条可视化自由函数 `PaintLightBarsVis()`，已从 `DebugData.lights_vis` 移出 |
 | `src/test/video_pipeline_test.cpp` | 离线调试主程序（含 Trackbar）|
 | `configs/vision.yaml` | 主配置（`detector:` 节点）|
