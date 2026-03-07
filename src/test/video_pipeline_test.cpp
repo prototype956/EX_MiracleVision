@@ -14,6 +14,7 @@
  *   1 → 检测结果视图           2 → 通道差分图
  *   3 → 二值化图               4 → 灯条可视化图
  *   s → 将当前参数写入 debug_override.yaml
+ *   l → 切换视频循环播放（默认开启，仅对视频文件有效）
  *
  * 调试基础设施（窗口 / Trackbar / FPS / 写回 YAML）
  * 均由 src/tool/debug_session.hpp 提供，本文件仅含视觉业务逻辑。
@@ -40,6 +41,7 @@
 int main(int argc, char** argv) {
   // ── 1. 解析相机/视频源 ───────────────────────────────────────────────────
   YAML::Node cam_cfg;
+  bool is_file_source = false;  // 是否为视频文件（而非摄像头索引）
   if (argc > 1) {
     const std::string src(argv[1]);
     const bool is_index = !src.empty() && std::all_of(src.begin(), src.end(), [](unsigned char c) {
@@ -49,6 +51,7 @@ int main(int argc, char** argv) {
       cam_cfg["source"] = std::stoi(src);
     } else {
       cam_cfg["source"] = src;
+      is_file_source = true;
     }
   } else {
     cam_cfg["source"] = 0;
@@ -117,6 +120,13 @@ int main(int argc, char** argv) {
   // 'q'/'ESC'/空格/1-4 已由 DebugSession 内置注册
   dbg.BindKey('s', [&dbg] { dbg.SaveParams(); });
 
+  // 'l'：切换视频循环播放（仅当 is_file_source 时生效）
+  bool loop_video = is_file_source;  // 视频文件时默认开启
+  dbg.BindKey('l', [&loop_video] {
+    loop_video = !loop_video;
+    MV_LOG_INFO("video-test", "循环播放: {}", loop_video ? "开" : "关");
+  });
+
   // ── 6. 读取敌方颜色 ──────────────────────────────────────────────────────
   const std::string ENEMY_STR = cfg.Get<std::string>("auto_aim.enemy_color", "red");
   const mv::ArmorColor ENEMY = (ENEMY_STR == "blue") ? mv::ArmorColor::BLUE : mv::ArmorColor::RED;
@@ -141,6 +151,17 @@ int main(int argc, char** argv) {
 
     // 采集帧
     if (!camera.Grab(frame) || frame.empty()) {
+      if (loop_video && is_file_source) {
+        // 视频播放完毕 → 关闭并重新打开，从头开始
+        camera.Close();
+        if (!camera.Open(cam_cfg)) {
+          MV_LOG_ERROR("video-test", "视频重新打开失败，退出");
+          break;
+        }
+        predictor.Init(root_cfg);  // 重置预测器，避免跨帧状态污染
+        MV_LOG_INFO("video-test", "视频循环重新播放");
+        continue;
+      }
       MV_LOG_INFO("video-test", "视频结束或相机断开");
       break;
     }
