@@ -5,6 +5,7 @@
 #include "tool/debug/param_tuner.hpp"
 
 #include <deque>
+#include <filesystem>
 #include <fstream>
 #include <stdexcept>
 
@@ -17,20 +18,20 @@ namespace mv::tool {
 
 struct ParamEntry {
   ParamDesc desc;
-  int       tb_val;  ///< Trackbar 绑定的整数变量（deque 保证地址稳定）
+  int tb_val;  ///< Trackbar 绑定的整数变量（deque 保证地址稳定）
 };
 
 struct ParamTuner::Impl {
-  std::string         win_name_;
+  std::string win_name_;
   std::deque<ParamEntry> entries_;  // deque: push_back 不使已有元素地址失效
 };
 
 // ── 构造 / 析构 ────────────────────────────────────────────────────────────
 
-ParamTuner::ParamTuner()  : impl_(std::make_unique<Impl>()) {}
+ParamTuner::ParamTuner() : impl_(std::make_unique<Impl>()) {}
 ParamTuner::~ParamTuner() = default;
 
-ParamTuner::ParamTuner(ParamTuner&&) noexcept            = default;
+ParamTuner::ParamTuner(ParamTuner&&) noexcept = default;
 ParamTuner& ParamTuner::operator=(ParamTuner&&) noexcept = default;
 
 // ── 公开接口实现 ────────────────────────────────────────────────────────────
@@ -48,8 +49,8 @@ void ParamTuner::AddParam(ParamDesc desc) {
   auto& entry = impl_->entries_.back();
   entry.tb_val = entry.desc.init_val;
 
-  cv::createTrackbar(entry.desc.label, impl_->win_name_,
-                     &entry.tb_val, entry.desc.max_val, nullptr);
+  cv::createTrackbar(entry.desc.label, impl_->win_name_, &entry.tb_val, entry.desc.max_val,
+                     nullptr);
 }
 
 void ParamTuner::ApplyAll() {
@@ -60,8 +61,7 @@ void ParamTuner::ApplyAll() {
   }
 }
 
-void ParamTuner::SaveTo(const std::string& yaml_path,
-                        const std::string& section) const {
+void ParamTuner::SaveTo(const std::string& yaml_path, const std::string& section) const {
   // 加载已有文件（若存在），否则从空节点开始
   YAML::Node root;
   {
@@ -79,7 +79,9 @@ void ParamTuner::SaveTo(const std::string& yaml_path,
     }
   }
 
-  // 写回文件
+  // 写回文件（自动创建父目录）
+  std::filesystem::create_directories(
+      std::filesystem::path(yaml_path).parent_path());
   std::ofstream ofs(yaml_path);
   if (!ofs.is_open()) {
     throw std::runtime_error("ParamTuner::SaveTo: cannot open file: " + yaml_path);

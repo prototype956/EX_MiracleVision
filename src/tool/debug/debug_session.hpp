@@ -38,10 +38,10 @@
  */
 #pragma once
 
-#include "tool/debug/param_tuner.hpp"
-#include "tool/debug/view_renderer.hpp"
 #include "interfaces/types.hpp"
 #include "modules/armor_detector/basic_armor_detector.hpp"
+#include "tool/debug/param_tuner.hpp"
+#include "tool/debug/view_renderer.hpp"
 
 #include <functional>
 #include <memory>
@@ -57,10 +57,10 @@ class DebugSession {
   // ── 配置 ─────────────────────────────────────────────────────────────────
 
   struct Config {
-    std::string main_window  = "mv-video-test";   ///< 主视图窗口标题
+    std::string main_window = "mv-video-test";    ///< 主视图窗口标题
     std::string debug_window = "mv-video-debug";  ///< Debug/Trackbar 窗口标题
-    std::string save_yaml    = "";                 ///< SaveParams() 写入路径
-    int         fps_window   = 30;                ///< FPS 滑动窗口帧数
+    std::string save_yaml = "";                   ///< SaveParams() 写入路径
+    int fps_window = 30;                          ///< FPS 滑动窗口帧数
   };
 
   // ── 主循环交互 ────────────────────────────────────────────────────────────
@@ -127,11 +127,10 @@ class DebugSession {
    * @param ctrl       云台控制指令（含跟踪状态）
    * @param params     当前检测器参数（用于 HUD 显示摘要）
    */
-  void Feed(const cv::Mat&                                  raw,
-            const mv::modules::BasicArmorDetector::DebugData& dbg,
-            const std::vector<mv::Detection>&               detections,
-            const mv::GimbalControl&                        ctrl,
-            const mv::modules::BasicArmorDetector::Params& params);
+  void Feed(const cv::Mat& raw, const mv::modules::BasicArmorDetector::DebugData& dbg,
+            const std::vector<mv::Detection>& detections, const mv::GimbalControl& ctrl,
+            const mv::modules::BasicArmorDetector::Params& params,
+            const std::string& status = "");
 
   // ── 性能指标 ──────────────────────────────────────────────────────────────
 
@@ -143,7 +142,7 @@ class DebugSession {
 
   // ── 视图 ──────────────────────────────────────────────────────────────────
 
-  void     SetView(ViewMode m);
+  void SetView(ViewMode m);
   ViewMode GetView() const;
 
  private:

@@ -15,6 +15,7 @@
  *   3 → 二值化图               4 → 灯条可视化图
  *   s → 将当前参数写入 debug_override.yaml
  *   l → 切换视频循环播放（默认开启，仅对视频文件有效）
+ *   c → 切换识别颜色（红/蓝），HUD 实时显示
  *
  * 调试基础设施（窗口 / Trackbar / FPS / 写回 YAML）
  * 均由 src/tool/debug/debug_session.hpp 提供，本文件仅含视觉业务逻辑。
@@ -94,7 +95,7 @@ int main(int argc, char** argv) {
   mv::tool::DebugSession dbg;
   dbg.Init({.main_window = "mv-video-test",
             .debug_window = "mv-video-debug",
-            .save_yaml = std::string(CONFIG_FILE_PATH) + "/debug_override.yaml"});
+            .save_yaml = std::string(CONFIG_FILE_PATH) + "/debug/debug_override.yaml"});
 
   // 注册可调参数（lambda 按引用捕获本地 params，每帧由 ApplyParams() 推送）
   auto params = detector.GetParams();
@@ -128,9 +129,17 @@ int main(int argc, char** argv) {
   });
 
   // ── 6. 读取敌方颜色 ──────────────────────────────────────────────────────
-  const std::string ENEMY_STR = cfg.Get<std::string>("auto_aim.enemy_color", "red");
-  const mv::ArmorColor ENEMY = (ENEMY_STR == "blue") ? mv::ArmorColor::BLUE : mv::ArmorColor::RED;
-  MV_LOG_INFO("video-test", "敌方颜色: {}", ENEMY_STR);
+  const std::string ENEMY_STR_INIT = cfg.Get<std::string>("auto_aim.enemy_color", "red");
+  mv::ArmorColor enemy_color =
+      (ENEMY_STR_INIT == "blue") ? mv::ArmorColor::BLUE : mv::ArmorColor::RED;
+  MV_LOG_INFO("video-test", "敌方颜色: {}", ENEMY_STR_INIT);
+
+  // 'c' 键切换识别颜色
+  dbg.BindKey('c', [&enemy_color] {
+    enemy_color = (enemy_color == mv::ArmorColor::RED) ? mv::ArmorColor::BLUE : mv::ArmorColor::RED;
+    MV_LOG_INFO("video-test", "切换识别颜色 → {}",
+                (enemy_color == mv::ArmorColor::RED) ? "RED" : "BLUE");
+  });
 
   // ── 7. 主循环 ────────────────────────────────────────────────────────────
   cv::Mat frame;
@@ -168,15 +177,18 @@ int main(int argc, char** argv) {
 
     // 检测 → 解算 → 预测
     const auto t_frame = std::chrono::steady_clock::now();
-    auto detections = detector.Detect(frame, ENEMY);
+    auto detections = detector.Detect(frame, enemy_color);
     for (auto& det : detections) {
       solver.Solve(det);
     }
-    const mv::GimbalControl ctrl = predictor.Predict(detections, t_frame, ENEMY);
+    const mv::GimbalControl ctrl = predictor.Predict(detections, t_frame, enemy_color);
 
     // 统计 + 渲染
+    const std::string status =
+        std::string("Enemy: ") + ((enemy_color == mv::ArmorColor::RED) ? "RED" : "BLUE") +
+        std::string("  [c]toggle");
     dbg.TickFrame(!detections.empty(), static_cast<int>(detections.size()));
-    dbg.Feed(frame, detector.GetDebugData(), detections, ctrl, detector.GetParams());
+    dbg.Feed(frame, detector.GetDebugData(), detections, ctrl, detector.GetParams(), status);
   }
 
   // ── 8. 统计输出 + 清理 ───────────────────────────────────────────────────

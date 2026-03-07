@@ -15,10 +15,10 @@ namespace mv::tool {
 // ── Impl ──────────────────────────────────────────────────────────────────
 
 struct DebugSession::Impl {
-  Config          cfg_;
-  ParamTuner      tuner_;
-  ViewRenderer    renderer_;
-  MetricsTracker  metrics_;
+  Config cfg_;
+  ParamTuner tuner_;
+  ViewRenderer renderer_;
+  MetricsTracker metrics_;
 
   std::unordered_map<int, std::function<void()>> key_map_;
 
@@ -30,30 +30,30 @@ struct DebugSession::Impl {
   // ── 注册内置按键 ────────────────────────────────────────────────────────
   void RegisterBuiltinKeys() {
     // 退出
-    key_map_['q']  = [this] { quit_   = true;  };
-    key_map_[27]   = [this] { quit_   = true;  };  // ESC
+    key_map_['q'] = [this] { quit_ = true; };
+    key_map_[27] = [this] { quit_ = true; };  // ESC
     // 暂停 / 继续
-    key_map_[' ']  = [this] { paused_ = !paused_; };
+    key_map_[' '] = [this] { paused_ = !paused_; };
     // 视图切换
-    key_map_['1']  = [this] { renderer_.SetView(ViewMode::RESULT); };
-    key_map_['2']  = [this] { renderer_.SetView(ViewMode::DIFF);   };
-    key_map_['3']  = [this] { renderer_.SetView(ViewMode::BINARY); };
-    key_map_['4']  = [this] { renderer_.SetView(ViewMode::LIGHTS); };
+    key_map_['1'] = [this] { renderer_.SetView(ViewMode::RESULT); };
+    key_map_['2'] = [this] { renderer_.SetView(ViewMode::DIFF); };
+    key_map_['3'] = [this] { renderer_.SetView(ViewMode::BINARY); };
+    key_map_['4'] = [this] { renderer_.SetView(ViewMode::LIGHTS); };
   }
 };
 
 // ── 构造 / 析构 ────────────────────────────────────────────────────────────
 
-DebugSession::DebugSession()  : impl_(std::make_unique<Impl>()) {}
+DebugSession::DebugSession() : impl_(std::make_unique<Impl>()) {}
 DebugSession::~DebugSession() = default;
 
-DebugSession::DebugSession(DebugSession&&) noexcept            = default;
+DebugSession::DebugSession(DebugSession&&) noexcept = default;
 DebugSession& DebugSession::operator=(DebugSession&&) noexcept = default;
 
 // ── 公开接口实现 ────────────────────────────────────────────────────────────
 
 void DebugSession::Init(const Config& cfg) {
-  impl_->cfg_     = cfg;
+  impl_->cfg_ = cfg;
   impl_->metrics_ = MetricsTracker(cfg.fps_window);
 
   // 创建窗口
@@ -75,7 +75,9 @@ void DebugSession::ApplyParams() {
 }
 
 void DebugSession::SaveParams() {
-  if (impl_->cfg_.save_yaml.empty()) { return; }
+  if (impl_->cfg_.save_yaml.empty()) {
+    return;
+  }
   impl_->tuner_.SaveTo(impl_->cfg_.save_yaml);
 }
 
@@ -94,17 +96,12 @@ DebugSession::PollResult DebugSession::Poll() {
   return {impl_->quit_, impl_->paused_};
 }
 
-void DebugSession::Feed(
-    const cv::Mat&                                  raw,
-    const mv::modules::BasicArmorDetector::DebugData& dbg,
-    const std::vector<mv::Detection>&               detections,
-    const mv::GimbalControl&                        ctrl,
-    const mv::modules::BasicArmorDetector::Params& params) {
-
-  impl_->renderer_.Render(raw, dbg, detections, ctrl,
-                          impl_->metrics_.TotalFrames(),
-                          impl_->metrics_.CurrentFps(),
-                          params);
+void DebugSession::Feed(const cv::Mat& raw, const mv::modules::BasicArmorDetector::DebugData& dbg,
+                        const std::vector<mv::Detection>& detections, const mv::GimbalControl& ctrl,
+                        const mv::modules::BasicArmorDetector::Params& params,
+                        const std::string& status) {
+  impl_->renderer_.Render(raw, dbg, detections, ctrl, impl_->metrics_.TotalFrames(),
+                          impl_->metrics_.CurrentFps(), params, status);
 }
 
 void DebugSession::TickFrame(bool has_detection, int det_count) {

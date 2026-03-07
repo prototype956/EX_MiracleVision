@@ -84,7 +84,8 @@ class ViewRenderer {
               const mv::GimbalControl&                        ctrl,
               int                                             frame_idx,
               double                                          fps,
-              const mv::modules::BasicArmorDetector::Params& params);
+              const mv::modules::BasicArmorDetector::Params& params,
+              const std::string&                             status = "");
 
  private:
   struct Impl;
