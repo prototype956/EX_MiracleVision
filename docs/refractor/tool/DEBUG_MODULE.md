@@ -91,6 +91,13 @@ dbg.BindKey('s', [&dbg] { dbg.SaveParams(); });
 bool loop_video = is_file_source;   // 视频文件时默认开启
 dbg.BindKey('l', [&loop_video] { loop_video = !loop_video; });
 
+// 切换识别颜色（c 键）
+mv::ArmorColor enemy_color = mv::ArmorColor::RED;  // 或从配置读取
+dbg.BindKey('c', [&enemy_color] {
+    enemy_color = (enemy_color == mv::ArmorColor::RED)
+        ? mv::ArmorColor::BLUE : mv::ArmorColor::RED;
+});
+
 // 5. 主循环
 cv::Mat frame;
 while (true) {
@@ -112,12 +119,17 @@ while (true) {
     }
 
     auto t   = std::chrono::steady_clock::now();
-    auto det = detector.Detect(frame, ENEMY_COLOR);
+    auto det = detector.Detect(frame, enemy_color);
     for (auto& d : det) solver.Solve(d);
-    auto ctrl = predictor.Predict(det, t, ENEMY_COLOR);
+    auto ctrl = predictor.Predict(det, t, enemy_color);
 
+    // status 字符串显示在 HUD 第 3 行（橙色）
+    const std::string status =
+        std::string("Enemy: ") +
+        (enemy_color == mv::ArmorColor::RED ? "RED" : "BLUE") +
+        "  [c]toggle";
     dbg.TickFrame(!det.empty(), int(det.size()));
-    dbg.Feed(frame, detector.GetDebugData(), det, ctrl, detector.GetParams());
+    dbg.Feed(frame, detector.GetDebugData(), det, ctrl, detector.GetParams(), status);
 }
 
 // 6. 收尾
@@ -149,7 +161,7 @@ camera.Close();
 | `Poll()` → `{quit, paused}` | 等待 1 ms 按键，分发绑定动作；**每帧调用一次** |
 | `ApplyParams()` | 将所有 Trackbar 当前值通过 `apply` 回调推送到外部 Params |
 | `TickFrame(bool, int)` | 向 MetricsTracker 报告本帧检测结果 |
-| `Feed(raw, dbg, dets, ctrl, params)` | 渲染主/debug 窗口 |
+| `Feed(raw, dbg, dets, ctrl, params[, status])` | 渲染主/debug 窗口；`status` 可选，传入后显示在 HUD 第 3 行（橙色）|
 | `SaveParams()` | 将当前参数写入 `Config::save_yaml`（YAML section = `"armor_detector"`） |
 | `PrintStats()` | 终端输出总帧数 / 检测率 / 平均 FPS |
 
@@ -183,6 +195,7 @@ struct ParamDesc {
 |------|------|
 | `s` | 将当前 Trackbar 参数写入 `debug_override.yaml` |
 | `l` | 切换视频循环播放开/关（仅对视频文件有效；默认**开启**）|
+| `c` | 切换识别颜色 RED ↔ BLUE，HUD 第 3 行实时反映，终端打印日志 |
 
 ---
 
@@ -195,7 +208,13 @@ struct ParamDesc {
 | 3 | `BINARY` | 二值化后的掩码图，用于判断灯条是否被正确提取 |
 | 4 | `LIGHTS` | 原图叠加灯条轮廓（每根灯条通过筛选后绘制黄色旋转矩形）|
 
-主窗口每种视图均叠加 HUD（左上：帧号/FPS/视图名/按键提示；右上：当前参数摘要）。debug 辅助窗口始终显示二值化图 + 参数单行摘要，同时承载全部 Trackbar。
+主窗口每种视图均叠加 HUD：
+- **左上第 1 行**（黄色）：帧号 / FPS / 当前视图名 / 按键提示
+- **左上第 2 行**：跟踪状态（绿色 TRACKING + 角度，或蓝色 LOST）
+- **左上第 3 行**（橙色）：`Feed()` 传入的 `status` 字符串，如当前识别颜色（为空时不渲染）
+- **右上**：当前检测器参数摘要
+
+debug 辅助窗口始终显示二值化图 + 参数单行摘要，同时承载全部 Trackbar。
 
 ---
 
@@ -228,7 +247,7 @@ if (!camera.Grab(frame) || frame.empty()) {
 按 `s`（或调用 `dbg.SaveParams()`）时，所有参数以当前浮点值写入 `Config::save_yaml`，YAML section 默认为 `armor_detector`：
 
 ```yaml
-# configs/debug_override.yaml（自动生成/更新）
+# configs/debug/debug_override.yaml（自动生成/更新）
 armor_detector:
   light_thresh: 168
   max_light_angle: 35.0
@@ -236,6 +255,9 @@ armor_detector:
   max_armor_ratio: 4.8
   max_angle_diff: 7.5
 ```
+
+> **路径**：`configs/debug/debug_override.yaml`（与 `vision.yaml` 等正式配置同在 `configs/` 下，
+> 子目录 `debug/` 由 `ParamTuner::SaveTo()` 内部调用 `std::filesystem::create_directories` 自动创建）。
 
 > **注意**：此文件不会修改 `vision.yaml`，需手动将调优结果回写到正式配置。
 
