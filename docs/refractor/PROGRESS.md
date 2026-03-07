@@ -13,7 +13,7 @@ Stage 2 ─ 硬件抽象层 (HAL)  ✅ 完成
 Stage 3 ─ 接口层 + 工厂      ✅ 完成
 Stage 4 ─ 线程 Pipeline      ✅ 完成
 Stage 5 ─ 状态机 (FSM)       ✅ 完成
-Stage 6 ─ 替换旧模块         🔲 待开始
+Stage 6 ─ 替换旧模块 + main  🔶 进行中（模块 + main 完成，旧代码清理待做）
 ```
 
 ---
@@ -262,25 +262,64 @@ mv-fsm  ✓ 零警告零错误（1 个 .cpp，1 个静态库）
 
 ---
 
-## Stage 6：替换旧模块 🔲
+## Stage 6：替换旧模块 + main.cpp 🔶
 
-逐步用新模块替换 `devices/`、`module/`、`base/` 下的旧代码，最终删除旧目录。
+> 最后更新：2026-03-06
 
-替换顺序建议（依赖关系从浅到深）：
-1. `devices/camera/` → `src/hal/camera/`（已完成接口，待工厂和 Pipeline 就绪后替换调用点）
-2. `devices/serial/` → `src/hal/serial/`（同上）
-3. `module/armor/` → 新检测器接口（待 Stage 3）
-4. `base/MiracleVision.cpp` → 新 Pipeline 主程序（待 Stage 4）
+### 交付物
+
+| 文件 | 说明 |
+|------|------|
+| `src/modules/armor_detector/basic_armor_detector.hpp/.cpp` | `BasicArmorDetector`（灯条轮廓法，实现 `IDetector`）|
+| `src/modules/pnp_solver/pnp_solver.hpp/.cpp` | `PnpSolver`（`cv::solvePnP`，实现 `ISolver`）|
+| `src/modules/simple_predictor/simple_predictor.hpp/.cpp` | `SimplePredictor`（无 EKF 简单跟踪器，实现 `IPredictor`）|
+| `src/modules/simple_voter/simple_voter.hpp/.cpp` | `SimpleVoter`（is_tracking + auto_fire，实现 `IVoter`）|
+| `src/modules/rm_shooter/rm_shooter.hpp/.cpp` | `RmShooter`（占位 8 字节协议，实现 `IShooter`）|
+| `src/modules/CMakeLists.txt` | 5 个独立静态库 `mv-mod-*` |
+| `src/app/main.cpp` | 入口：加载配置、初始化 Logger、信号处理、构建 Pipeline、驱动 VisionFSM |
+| `src/app/CMakeLists.txt` | 新增 `mv-vision-main` 可执行文件 |
+| `src/CMakeLists.txt` | 解除 `add_subdirectory(modules)` 注释 |
+
+### 编译状态
+
+```
+mv-mod-armor-detector   ✓ 零警告零错误
+mv-mod-pnp-solver       ✓ 零警告零错误
+mv-mod-simple-predictor ✓ 零警告零错误
+mv-mod-simple-voter     ✓ 零警告零错误
+mv-mod-rm-shooter       ✓ 零警告零错误
+mv-vision-main          ✓ 零警告零错误（8.7 MB 可执行文件）
+整体构建（make -j）      ✓ 全部目标通过，无回归
+```
+
+### 关键设计决策
+
+- **直接实例化而非工厂注册**：`main.cpp` 通过 `std::make_unique<BasicArmorDetector>()` 等直接创建模块，规避静态库链接器 dead-strip 导致的工厂注册丢失问题。工厂注册代码仍在各模块命名空间内保留（面向未来的 dynamic mode 使用）。
+- **`MV_REGISTER_*` 宏内命名空间限制**：宏内部使用 `##ConcreteT` 标识符粘贴，`::` 字符导致非法标识符。解决方案：在各模块的 `namespace mv::modules {}` 内手写静态 bool 完成注册，不依赖宏中的类型前缀。
+- **整棵配置树传给 Init()**：`cfg.Subtree()` 返回全配置树，各模块的 `Init()` 自行查找所需子节点（如 `auto_aim.tracker`、`calibration`），避免 `main.cpp` 了解模块内部配置结构。
+- **串口失败不终止**：串口 `Open()` 失败时只打 `WARN`，不终止进程——无下位机时仍可在调试模式下运行 Pipeline（`RmShooter::Send()` 会静默失败，`SerialNode` 到达 `max_send_fail` 后进入 `ERROR` 状态触发 FSM 错误恢复）。
+- **相机失败回退**：`mindvision` 模式失败时自动回退到 `OpenCvCamera`；`OpenCvCamera` 也失败时退出（无帧输入 Pipeline 无法运行）。
+
+### 剩余技术债
+
+| 文件 | 问题 | 优先级 |
+|------|------|--------|
+| `src/pipeline/serial_node.cpp` | `TryRecv()` 使用 5 字节占位帧，需与下位机确认协议后替换 | 中（比赛前）|
+| `src/modules/rm_shooter/rm_shooter.cpp` | 帧格式同上为临时协议，CRC8 使用简单 XOR | 中 |
+| `src/modules/simple_predictor/` | 无 EKF，无飞行时间延迟补偿，yaw/pitch 为直通值 | 中（提升精度时替换） |
+| `src/fsm/vision_fsm.cpp` | `ENERGY_BUFF` 状态逻辑未接入上行 `mode` 字段 | 低 |
+| `base/` `devices/` `module/` | 旧代码未清理，待新模块验证稳定后删除 | 低（Stage 6 末尾）|
 
 ---
 
-## 已知问题 / 技术债
+## 已知问题 / 技术债（当前）
 
 | 文件 | 问题 | 优先级 |
 |------|------|--------|
 | `src/app/smoke_test.cpp` | `main()` 认知复杂度超阈值（47 > 25），`files.size() >= 1` 应为 `!files.empty()` | 低（测试代码） |
 | `module/foxglove_publisher/foxglove_publisher.cpp` | `schemas.hpp` 类型在 `namespace foxglove::schemas` 内失效，编译报错 | 中（旧代码，不影响新模块） |
-| `src/interfaces/types.hpp` | `Detection` 中的 `cv::Mat pattern` 字段暂未添加（旧 predictor::Armor 有），待具体实现时按需补充 | 低 |
-| `src/factory/` | 尚无对应的具体实现（`BasicArmorDetector` 等），工厂注册表为空，`Create()` 目前只能用 Mock | 高（Stage 5/6 完成）|
 | `src/pipeline/serial_node.cpp` | 上行帧格式使用占位协议（帧头 0xAA + 5 字节），正式比赛需与下位机队友确认协议后修改 `TryRecv()` | 中（比赛前修改）|
-| `src/pipeline/` | `IVoter`/`IShooter` 无具体实现，工厂 `Create()` 返回 nullptr，Pipeline 目前仅能使用 Mock 进行集成测试 | 高（Stage 5/6 实现具体类）|
+| `src/modules/rm_shooter/rm_shooter.cpp` | 帧格式为临时 8 字节占位协议，与上行协议需统一 | 中 |
+| `src/modules/simple_predictor/` | 无 EKF，无飞行时间延迟补偿，仅直通当前帧角度 | 中（阶段性）|
+| `src/fsm/vision_fsm.cpp` | `ENERGY_BUFF` 状态逻辑未接入上行 `mode` 字段 | 低 |
+| `base/` `devices/` `module/` | 旧代码目录未清理，待新模块验证稳定后删除 | 低 |

@@ -19,6 +19,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 
 namespace mv::tool {
 
@@ -77,7 +78,7 @@ class ParamTuner {
    * @param section    在 YAML 文件中的节点名（默认 "detector"）
    */
   void SaveTo(const std::string& yaml_path,
-              const std::string& section = "detector") const;
+              std::string_view   section = "detector") const;
 
  private:
   struct Impl;

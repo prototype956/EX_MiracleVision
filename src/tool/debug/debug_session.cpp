@@ -15,30 +15,35 @@ namespace mv::tool {
 // ── Impl ──────────────────────────────────────────────────────────────────
 
 struct DebugSession::Impl {
-  Config cfg_;
-  ParamTuner tuner_;
-  ViewRenderer renderer_;
-  MetricsTracker metrics_;
+  // struct 成员全部 public，命名 lower_case 无后缀
+  Config         cfg;
+  ParamTuner     tuner;
+  ViewRenderer   renderer;
+  MetricsTracker metrics;
 
-  std::unordered_map<int, std::function<void()>> key_map_;
+  std::unordered_map<int, std::function<void()>> key_map;
 
-  bool quit_{false};
-  bool paused_{false};
+  bool quit{false};
+  bool paused{false};
 
+  // 自定义析构 → 显式声明其余特殊函数（Rule of Five）
+  Impl() = default;
+  Impl(const Impl&) = delete;
+  Impl& operator=(const Impl&) = delete;
+  Impl(Impl&&) = delete;
+  Impl& operator=(Impl&&) = delete;
+  // NOLINTNEXTLINE(bugprone-exception-escape)
   ~Impl() { cv::destroyAllWindows(); }
 
   // ── 注册内置按键 ────────────────────────────────────────────────────────
   void RegisterBuiltinKeys() {
-    // 退出
-    key_map_['q'] = [this] { quit_ = true; };
-    key_map_[27] = [this] { quit_ = true; };  // ESC
-    // 暂停 / 继续
-    key_map_[' '] = [this] { paused_ = !paused_; };
-    // 视图切换
-    key_map_['1'] = [this] { renderer_.SetView(ViewMode::RESULT); };
-    key_map_['2'] = [this] { renderer_.SetView(ViewMode::DIFF); };
-    key_map_['3'] = [this] { renderer_.SetView(ViewMode::BINARY); };
-    key_map_['4'] = [this] { renderer_.SetView(ViewMode::LIGHTS); };
+    key_map['q'] = [this] { quit = true; };
+    key_map[27]  = [this] { quit = true; };   // ESC
+    key_map[' '] = [this] { paused = !paused; };
+    key_map['1'] = [this] { renderer.SetView(ViewMode::RESULT); };
+    key_map['2'] = [this] { renderer.SetView(ViewMode::DIFF); };
+    key_map['3'] = [this] { renderer.SetView(ViewMode::BINARY); };
+    key_map['4'] = [this] { renderer.SetView(ViewMode::LIGHTS); };
   }
 };
 
@@ -53,71 +58,70 @@ DebugSession& DebugSession::operator=(DebugSession&&) noexcept = default;
 // ── 公开接口实现 ────────────────────────────────────────────────────────────
 
 void DebugSession::Init(const Config& cfg) {
-  impl_->cfg_ = cfg;
-  impl_->metrics_ = MetricsTracker(cfg.fps_window);
+  impl_->cfg     = cfg;
+  impl_->metrics = MetricsTracker(cfg.fps_window);
 
-  // 创建窗口
-  impl_->renderer_.Init(cfg.main_window, cfg.debug_window);
-
-  // Trackbar 附加到 debug 窗口
-  impl_->tuner_.AttachToWindow(cfg.debug_window);
-
-  // 注册内置按键
+  impl_->renderer.Init(cfg.main_window, cfg.debug_window);
+  impl_->tuner.AttachToWindow(cfg.debug_window);
   impl_->RegisterBuiltinKeys();
 }
 
 void DebugSession::AddParam(ParamDesc desc) {
-  impl_->tuner_.AddParam(std::move(desc));
+  impl_->tuner.AddParam(std::move(desc));
 }
 
 void DebugSession::ApplyParams() {
-  impl_->tuner_.ApplyAll();
+  impl_->tuner.ApplyAll();
 }
 
 void DebugSession::SaveParams() {
-  if (impl_->cfg_.save_yaml.empty()) {
+  if (impl_->cfg.save_yaml.empty()) {
     return;
   }
-  impl_->tuner_.SaveTo(impl_->cfg_.save_yaml);
+  impl_->tuner.SaveTo(impl_->cfg.save_yaml);
 }
 
 void DebugSession::BindKey(int key, std::function<void()> action) {
-  impl_->key_map_[key] = std::move(action);
+  impl_->key_map[key] = std::move(action);
 }
 
 DebugSession::PollResult DebugSession::Poll() {
-  const int key = cv::waitKey(impl_->paused_ ? 50 : 1) & 0xFF;
-  if (key != 255) {  // 255 = no key
-    auto it = impl_->key_map_.find(key);
-    if (it != impl_->key_map_.end() && it->second) {
-      it->second();
+  const int KEY = cv::waitKey(impl_->paused ? 50 : 1) & 0xFF;
+  if (KEY != 255) {  // 255 = no key pressed
+    const auto found = impl_->key_map.find(KEY);
+    if (found != impl_->key_map.end() && found->second) {
+      found->second();
     }
   }
-  return {impl_->quit_, impl_->paused_};
+  return {impl_->quit, impl_->paused};
 }
 
-void DebugSession::Feed(const cv::Mat& raw, const mv::modules::BasicArmorDetector::DebugData& dbg,
-                        const std::vector<mv::Detection>& detections, const mv::GimbalControl& ctrl,
-                        const mv::modules::BasicArmorDetector::Params& params,
-                        const std::string& status) {
-  impl_->renderer_.Render(raw, dbg, detections, ctrl, impl_->metrics_.TotalFrames(),
-                          impl_->metrics_.CurrentFps(), params, status);
+void DebugSession::Feed(const cv::Mat& raw,
+                        const mv::modules::BasicArmorDetector::DebugData& dbg,
+                        const std::vector<mv::Detection>&                 detections,
+                        const mv::GimbalControl&                          ctrl,
+                        const mv::modules::BasicArmorDetector::Params&    params,
+                        const std::string&                                status) {
+  impl_->renderer.Render(raw, dbg, detections, ctrl,
+                         impl_->metrics.TotalFrames(),
+                         impl_->metrics.CurrentFps(),
+                         params, status);
 }
 
 void DebugSession::TickFrame(bool has_detection, int det_count) {
-  impl_->metrics_.Tick(has_detection, det_count);
+  impl_->metrics.Tick(has_detection, det_count);
 }
 
 void DebugSession::PrintStats() const {
-  impl_->metrics_.PrintStats();
+  impl_->metrics.PrintStats();
 }
 
-void DebugSession::SetView(ViewMode m) {
-  impl_->renderer_.SetView(m);
+void DebugSession::SetView(ViewMode mode) {
+  impl_->renderer.SetView(mode);
 }
 
-ViewMode DebugSession::GetView() const {
-  return impl_->renderer_.GetView();
+[[nodiscard]] ViewMode DebugSession::GetView() const {
+  return impl_->renderer.GetView();
 }
 
 }  // namespace mv::tool

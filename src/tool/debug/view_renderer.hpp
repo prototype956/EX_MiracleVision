@@ -64,8 +64,8 @@ class ViewRenderer {
   void Init(const std::string& main_win, const std::string& debug_win);
 
   /** 切换主视图显示模式 */
-  void     SetView(ViewMode m) noexcept;
-  ViewMode GetView() const noexcept;
+  void              SetView(ViewMode mode) noexcept;
+  [[nodiscard]] ViewMode GetView() const noexcept;
 
   /**
    * @brief 渲染一帧并 imshow

@@ -9,6 +9,7 @@ add_library(mv-tool-debug STATIC
     param_tuner.cpp
     view_renderer.cpp
     debug_session.cpp
+    light_vis_painter.cpp
 )
 
 target_include_directories(mv-tool-debug

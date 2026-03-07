@@ -59,7 +59,7 @@ class DebugSession {
   struct Config {
     std::string main_window = "mv-video-test";    ///< 主视图窗口标题
     std::string debug_window = "mv-video-debug";  ///< Debug/Trackbar 窗口标题
-    std::string save_yaml = "";                   ///< SaveParams() 写入路径
+    std::string save_yaml;                        ///< SaveParams() 写入路径（空串=不保存）
     int fps_window = 30;                          ///< FPS 滑动窗口帧数
   };
 
@@ -122,15 +122,14 @@ class DebugSession {
    * @brief 提交本帧数据，触发渲染
    *
    * @param raw        原始帧
-   * @param dbg        检测器调试数据（diff / binary / lights_vis）
+   * @param dbg        检测器调试数据（diff / binary；lights_vis 已移至 PaintLightBarsVis）
    * @param detections 检测结果列表
    * @param ctrl       云台控制指令（含跟踪状态）
    * @param params     当前检测器参数（用于 HUD 显示摘要）
    */
   void Feed(const cv::Mat& raw, const mv::modules::BasicArmorDetector::DebugData& dbg,
             const std::vector<mv::Detection>& detections, const mv::GimbalControl& ctrl,
-            const mv::modules::BasicArmorDetector::Params& params,
-            const std::string& status = "");
+            const mv::modules::BasicArmorDetector::Params& params, const std::string& status = "");
 
   // ── 性能指标 ──────────────────────────────────────────────────────────────
 
@@ -142,8 +141,8 @@ class DebugSession {
 
   // ── 视图 ──────────────────────────────────────────────────────────────────
 
-  void SetView(ViewMode m);
-  ViewMode GetView() const;
+  void              SetView(ViewMode mode);
+  [[nodiscard]] ViewMode GetView() const;
 
  private:
   struct Impl;

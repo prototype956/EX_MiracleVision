@@ -4,6 +4,8 @@
  */
 #include "tool/debug/view_renderer.hpp"
 
+#include "tool/debug/light_vis_painter.hpp"
+
 #include <array>
 #include <iomanip>
 #include <sstream>
@@ -134,8 +136,8 @@ void ViewRenderer::Init(const std::string& main_win, const std::string& debug_wi
   cv::resizeWindow(debug_win, 640, 480);
 }
 
-void ViewRenderer::SetView(ViewMode m) noexcept {
-  impl_->view_ = m;
+void ViewRenderer::SetView(ViewMode mode) noexcept {
+  impl_->view_ = mode;
 }
 ViewMode ViewRenderer::GetView() const noexcept {
   return impl_->view_;
@@ -164,7 +166,8 @@ void ViewRenderer::Render(const cv::Mat& raw, const mv::modules::BasicArmorDetec
       }
       break;
     case ViewMode::LIGHTS:
-      display = dbg.lights_vis.empty() ? raw.clone() : dbg.lights_vis.clone();
+      // lights_vis 按需生成（PaintLightBarsVis），不再依赖检测器内部产出
+      display = mv::tool::PaintLightBarsVis(dbg.binary, raw, params);
       break;
     default:  // ViewMode::RESULT
       display = raw.clone();

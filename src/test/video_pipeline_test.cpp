@@ -102,10 +102,24 @@ int main(int argc, char** argv) {
   dbg.AddParam({"Thresh         ", "light_thresh", params.light_thresh, 255,
                 [&params](int v) { params.light_thresh = v; },
                 [&params] { return static_cast<double>(params.light_thresh); }});
+  dbg.AddParam({"GreenThresh    ", "green_thresh", params.green_thresh, 255,
+                [&params](int v) { params.green_thresh = v; },
+                [&params] { return static_cast<double>(params.green_thresh); }});
+  dbg.AddParam({"WhiteThresh    ", "white_thresh", params.white_thresh, 255,
+                [&params](int v) { params.white_thresh = v; },
+                [&params] { return static_cast<double>(params.white_thresh); }});
   dbg.AddParam({"MaxAngle x10   ", "max_light_angle",
                 static_cast<int>(params.max_light_angle * 10.F), 900,
                 [&params](int v) { params.max_light_angle = static_cast<float>(v) / 10.F; },
                 [&params] { return static_cast<double>(params.max_light_angle); }});
+  dbg.AddParam({"MaxLightR x100 ", "max_light_ratio",
+                static_cast<int>(params.max_light_ratio * 100.F), 100,
+                [&params](int v) { params.max_light_ratio = static_cast<float>(v) / 100.F; },
+                [&params] { return static_cast<double>(params.max_light_ratio); }});
+  dbg.AddParam({"MinLightR x100 ", "min_light_ratio",
+                static_cast<int>(params.min_light_ratio * 100.F), 100,
+                [&params](int v) { params.min_light_ratio = static_cast<float>(v) / 100.F; },
+                [&params] { return static_cast<double>(params.min_light_ratio); }});
   dbg.AddParam({"MinArmorR x10  ", "min_armor_ratio",
                 static_cast<int>(params.min_armor_ratio * 10.F), 100,
                 [&params](int v) { params.min_armor_ratio = static_cast<float>(v) / 10.F; },
@@ -117,6 +131,9 @@ int main(int argc, char** argv) {
   dbg.AddParam({"AngleDiff x10  ", "max_angle_diff", static_cast<int>(params.max_angle_diff * 10.F),
                 900, [&params](int v) { params.max_angle_diff = static_cast<float>(v) / 10.F; },
                 [&params] { return static_cast<double>(params.max_angle_diff); }});
+  dbg.AddParam({"MinArea        ", "min_area", static_cast<int>(params.min_area), 500,
+                [&params](int v) { params.min_area = static_cast<float>(v); },
+                [&params] { return static_cast<double>(params.min_area); }});
 
   // 'q'/'ESC'/空格/1-4 已由 DebugSession 内置注册
   dbg.BindKey('s', [&dbg] { dbg.SaveParams(); });
@@ -184,9 +201,9 @@ int main(int argc, char** argv) {
     const mv::GimbalControl ctrl = predictor.Predict(detections, t_frame, enemy_color);
 
     // 统计 + 渲染
-    const std::string status =
-        std::string("Enemy: ") + ((enemy_color == mv::ArmorColor::RED) ? "RED" : "BLUE") +
-        std::string("  [c]toggle");
+    const std::string status = std::string("Enemy: ") +
+                               ((enemy_color == mv::ArmorColor::RED) ? "RED" : "BLUE") +
+                               std::string("  [c]toggle");
     dbg.TickFrame(!detections.empty(), static_cast<int>(detections.size()));
     dbg.Feed(frame, detector.GetDebugData(), detections, ctrl, detector.GetParams(), status);
   }
