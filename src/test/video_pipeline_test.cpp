@@ -217,9 +217,10 @@ int main(int argc, char** argv) {
         (ENEMY_STR_INIT == "blue") ? mv::ArmorColor::BLUE : mv::ArmorColor::RED;
     MV_LOG_INFO("video-test", "敌方颜色: {}", ENEMY_STR_INIT);
 
-    dbg.BindKey('c', [&enemy_color] {
+    dbg.BindKey('c', [&enemy_color, &detector] {
       enemy_color =
           (enemy_color == mv::ArmorColor::RED) ? mv::ArmorColor::BLUE : mv::ArmorColor::RED;
+      detector.ResetRoi();  // 切换颜色时清空 ROI，避免旧区域锁死新目标
     });
 
     // ── 7. 主循环 ────────────────────────────────────────────────────────────

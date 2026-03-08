@@ -27,7 +27,7 @@ serial:
 
 # ── 自瞄参数 ──────────────────────────────────────────────────────────────────
 auto_aim:
-  enemy_color: "red"     # red / blue
+  enemy_color: "blue"     # red / blue
 
   tracker:
     min_detect_count: 5

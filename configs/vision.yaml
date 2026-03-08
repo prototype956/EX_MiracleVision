@@ -14,7 +14,7 @@ system:
 camera:
   backend: "mindvision"   # mindvision / opencv / video_file
   device_index: 0
-  resolution: "1280x1024" # 1280x1024 / 1280x800 / 640x480
+  resolution: "1280x800" # 1280x1024 / 1280x800 / 640x480
   exposure: 2500
   # video_file 模式下使用
   video_path: ""
