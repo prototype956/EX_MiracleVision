@@ -54,7 +54,9 @@ Hover:
 InlayHints:
   Enabled: Yes
   ParameterNames: Yes
-  DeducedTypes: Yes
+  # DeducedTypes: clangd-14 已知 bug：处理 static constexpr 暂展式 + 连锁字符串表达式时
+  # 在 InlayHints 阶段 SIGSEGV。clangd-15+ 已修复，14 下必须关闭。
+  DeducedTypes: No
   Designators: Yes
 
 Completion:

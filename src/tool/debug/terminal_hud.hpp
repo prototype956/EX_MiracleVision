@@ -53,6 +53,11 @@
 
 namespace mv::tool {
 
+namespace {
+/// rad 转 degree 转换系数（移到匿名 namespace 避免 clangd-14 static constexpr 成员触发 InlayHints 崩溃）
+inline constexpr double kRad2Deg = 57.295779513082323;
+}  // namespace
+
 class TerminalHUD {
  public:
   // ── 节点健康指标（字段与 FoxgloveSink::ThreadMetrics 一一对应）──────────
@@ -76,7 +81,11 @@ class TerminalHUD {
 
   // ── 生命周期 ──────────────────────────────────────────────────────────────
 
-  explicit TerminalHUD(Config cfg = Config{})
+  /// 使用默认配置（host=0.0.0.0:8765, interval_ms=200）
+  TerminalHUD() : TerminalHUD(Config{}) {}
+
+  /// 自定义配置
+  explicit TerminalHUD(Config cfg)
       : cfg_(std::move(cfg)), last_print_(Clock::now()) {
     // 非交互 TTY 时自动降级：关闭颜色和行刷新
     if (::isatty(STDOUT_FILENO) == 0) {
@@ -201,8 +210,6 @@ class TerminalHUD {
 
  private:
   using Clock = std::chrono::steady_clock;
-
-  static constexpr double kRad2Deg = 57.295779513082323;
 
   Config cfg_;
   Clock::time_point last_print_;
