@@ -28,6 +28,8 @@
  */
 #pragma once
 
+#include "interfaces/types.hpp"
+
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -37,8 +39,6 @@
 #include <Eigen/Dense>
 #include <nlohmann/json.hpp>
 #include <opencv2/core.hpp>
-
-#include "interfaces/types.hpp"
 
 namespace mv::tool {
 
@@ -62,12 +62,12 @@ class FoxgloveSink {
   // ── 线程健康指标（由 PipelineNode 填充并上报）─────────────────────────
 
   struct ThreadMetrics {
-    std::string node_name;      ///< 节点名称（"CaptureNode" 等）
-    double fps{0.0};            ///< 当前处理帧率
-    double latency_ms{0.0};     ///< 本节点平均处理延迟（ms）
-    uint64_t drop_count{0};     ///< 累计丢帧数
-    bool is_alive{true};        ///< 线程是否仍在运行
-    std::string error_msg;      ///< 最近一条错误信息（空=无错）
+    std::string node_name;   ///< 节点名称（"CaptureNode" 等）
+    double fps{0.0};         ///< 当前处理帧率
+    double latency_ms{0.0};  ///< 本节点平均处理延迟（ms）
+    uint64_t drop_count{0};  ///< 累计丢帧数
+    bool is_alive{true};     ///< 线程是否仍在运行
+    std::string error_msg;   ///< 最近一条错误信息（空=无错）
   };
 
   // ── 参数双向调节回调 ─────────────────────────────────────────────────────
@@ -90,6 +90,21 @@ class FoxgloveSink {
   void Start();
   /** 停止 Server，断开所有客户端 */
   void Stop();
+
+  /**
+   * @brief 是否有客户端当前连接（无锁读，O(1)）
+   *
+   * 可在发布前用于外部门控，避免自行序列化昂贵数据：
+   * @code
+   *   if (sink.HasClients()) {
+   *       auto debug_img = DrawDebug(frame, dets);
+   *       sink.PublishImage(debug_img, "camera/debug");
+   *   }
+   * @endcode
+   * @note PublishImage / PublishPnpResult 内部已自动门控，
+   *       只有需要在外部避免绘图开销时才需要手动调用本方法。
+   */
+  [[nodiscard]] bool HasClients() const noexcept;
 
   // ── 图像发布 ──────────────────────────────────────────────────────────────
 

@@ -11,9 +11,16 @@
  */
 #include "tool/foxglove/foxglove_sink.hpp"
 
+#include "tool/foxglove/detail/detection_publisher.hpp"
+#include "tool/foxglove/detail/image_publisher.hpp"
+#include "tool/foxglove/detail/pnp_visualizer.hpp"
+#include "tool/foxglove/detail/tf_publisher.hpp"
+#include "tool/foxglove/detail/thread_monitor.hpp"
+#include "tool/foxglove/detail/utils.hpp"
+
+#include <atomic>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -24,14 +31,8 @@
 #include <foxglove/server.hpp>
 #include <foxglove/server/parameter.hpp>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <spdlog/spdlog.h>
-
-#include "tool/foxglove/detail/detection_publisher.hpp"
-#include "tool/foxglove/detail/image_publisher.hpp"
-#include "tool/foxglove/detail/pnp_visualizer.hpp"
-#include "tool/foxglove/detail/tf_publisher.hpp"
-#include "tool/foxglove/detail/thread_monitor.hpp"
-#include "tool/foxglove/detail/utils.hpp"
 
 namespace mv::tool {
 
@@ -55,6 +56,15 @@ struct FoxgloveSink::Impl {
   // ── 云台控制（JSON channel）──────────────────────────────────────────────
   std::optional<foxglove::RawChannel> ctrl_ch;
   std::mutex ctrl_mtx;
+
+  // ── 连接状态 ──────────────────────────────────────────────────────────────
+  /// 当前活跃客户端数量（原子计数，供零客户端时跳过图像编码）
+  std::atomic<int> client_count{0};
+
+  /// 是否有至少一个客户端连接（无锁快速查询）
+  [[nodiscard]] bool HasClients() const noexcept {
+    return client_count.load(std::memory_order_relaxed) > 0;
+  }
 
   // ── 参数双向调节 ─────────────────────────────────────────────────────────
   std::unordered_map<std::string, foxglove::Parameter> param_store;
@@ -98,9 +108,9 @@ struct FoxgloveSink::Impl {
     };
 
     // 2. 设置参数（Client → Server）
-    options.callbacks.onSetParameters =
-        [this](uint32_t /*client_id*/, std::optional<std::string_view> /*req_id*/,
-               const std::vector<foxglove::ParameterView>& params)
+    options.callbacks.onSetParameters = [this](uint32_t /*client_id*/,
+                                               std::optional<std::string_view> /*req_id*/,
+                                               const std::vector<foxglove::ParameterView>& params)
         -> std::vector<foxglove::Parameter> {
       std::vector<foxglove::Parameter> result;
       std::vector<std::string> changed;
@@ -137,9 +147,10 @@ struct FoxgloveSink::Impl {
       spdlog::debug("[FoxgloveSink] Client {} unsubscribed from channel {}", c.id, ch_id);
     };
 
-    // 5. 客户端连接时推送所有已存储参数
+    // 5a. 客户端连接：计数 +1，推送已存储参数快照
     options.callbacks.onClientConnect = [this]() {
-      spdlog::info("[FoxgloveSink] Client connected. Publishing parameter snapshot...");
+      const int n = client_count.fetch_add(1, std::memory_order_relaxed) + 1;
+      spdlog::info("[FoxgloveSink] Client connected (total: {}). Publishing parameter snapshot...", n);
       std::vector<foxglove::Parameter> snapshot;
       {
         std::lock_guard<std::mutex> lock(param_mutex);
@@ -150,6 +161,12 @@ struct FoxgloveSink::Impl {
       if (!snapshot.empty() && server) {
         server->publishParameterValues(std::move(snapshot));
       }
+    };
+
+    // 5b. 客户端断开：计数 -1
+    options.callbacks.onClientDisconnect = [this]() {
+      const int n = client_count.fetch_sub(1, std::memory_order_relaxed) - 1;
+      spdlog::info("[FoxgloveSink] Client disconnected (remaining: {})", n);
     };
 
     // 创建 Server
@@ -196,10 +213,16 @@ void FoxgloveSink::Stop() {
   }
 }
 
+bool FoxgloveSink::HasClients() const noexcept {
+  return impl_->HasClients();
+}
+
 // ── 图像 ─────────────────────────────────────────────────────────────────────
 
 void FoxgloveSink::PublishImage(const cv::Mat& img, const std::string& topic,
-                                 const std::string& frame_id, int64_t ts_ns) {
+                                const std::string& frame_id, int64_t ts_ns) {
+  // 零客户端时跳过昂贵的图像编码，避免拖累 Pipeline 帧率
+  if (!impl_->HasClients()) return;
   impl_->image_pub->Publish(img, topic, frame_id, detail::ResolveTs(ts_ns));
 }
 
@@ -212,14 +235,16 @@ void FoxgloveSink::PublishDetections(const std::vector<mv::Detection>& dets, int
 // ── PnP 专项调试 ──────────────────────────────────────────────────────────────
 
 void FoxgloveSink::PublishPnpResult(const std::vector<mv::Detection>& dets, const cv::Mat& frame,
-                                     int64_t ts_ns) {
+                                    int64_t ts_ns) {
+  // 零客户端时跳过调试图像绘制和编码
+  if (!impl_->HasClients()) return;
   impl_->pnp_viz->Publish(dets, frame, detail::ResolveTs(ts_ns));
 }
 
 // ── TF 坐标系 ─────────────────────────────────────────────────────────────────
 
 void FoxgloveSink::PublishTransform(const std::string& parent, const std::string& child,
-                                     const Eigen::Matrix4d& T, int64_t ts_ns) {
+                                    const Eigen::Matrix4d& T, int64_t ts_ns) {
   impl_->tf_pub->Publish(parent, child, T, detail::ResolveTs(ts_ns));
 }
 
@@ -238,8 +263,7 @@ void FoxgloveSink::PublishGimbalControl(const mv::GimbalControl& ctrl, int64_t t
 
   // 懒创建 channel
   if (!impl_->ctrl_ch.has_value()) {
-    auto res =
-        foxglove::RawChannel::create("control/gimbal", "json", std::nullopt, impl_->ctx);
+    auto res = foxglove::RawChannel::create("control/gimbal", "json", std::nullopt, impl_->ctx);
     if (res.has_value()) {
       impl_->ctrl_ch.emplace(std::move(res.value()));
     } else {
@@ -312,12 +336,18 @@ nlohmann::json FoxgloveSink::GetParameter(const std::string& name) const {
     return nullptr;
   }
   const auto& p = it->second;
-  if (p.is<bool>()) return p.get<bool>();
-  if (p.is<int64_t>()) return p.get<int64_t>();
-  if (p.is<double>()) return p.get<double>();
-  if (p.is<std::string>()) return p.get<std::string>();
-  if (p.is<std::vector<double>>()) return p.get<std::vector<double>>();
-  if (p.is<std::vector<int64_t>>()) return p.get<std::vector<int64_t>>();
+  if (p.is<bool>())
+    return p.get<bool>();
+  if (p.is<int64_t>())
+    return p.get<int64_t>();
+  if (p.is<double>())
+    return p.get<double>();
+  if (p.is<std::string>())
+    return p.get<std::string>();
+  if (p.is<std::vector<double>>())
+    return p.get<std::vector<double>>();
+  if (p.is<std::vector<int64_t>>())
+    return p.get<std::vector<int64_t>>();
   return nullptr;
 }
 
