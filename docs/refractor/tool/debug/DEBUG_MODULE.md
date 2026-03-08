@@ -32,7 +32,7 @@ test/video_pipeline_test.cpp
 |------|------|
 | `metrics_tracker.hpp` | Header-only。FPS 滑动平均 + 帧统计 |
 | `param_tuner.hpp/.cpp` | Pimpl。OpenCV Trackbar 封装 + YAML 写回 |
-| `view_renderer.hpp/.cpp` | Pimpl。双窗口渲染 + 4 种视图模式 + HUD |
+| `view_renderer.hpp/.cpp` | Pimpl。双窗口渲染 + 5 种视图模式 + HUD |
 | `debug_session.hpp/.cpp` | Pimpl Facade。聚合以上三个组件；管理按键绑定 |
 | `CMakeLists.txt` | 声明 `mv-tool-debug` 静态库 |
 
@@ -66,7 +66,7 @@ mv::tool::DebugSession dbg;
 dbg.Init({
     .main_window  = "mv-video-test",          // 主视图窗口标题
     .debug_window = "mv-video-debug",         // debug 辅助窗口标题
-    .save_yaml    = "configs/debug_override.yaml",  // 参数持久化路径
+    .save_yaml    = CONFIG_FILE_PATH "/debug/debug_override.yaml",  // 参数持久化路径
     .fps_window   = 30,                       // FPS 滑动平均窗口帧数
 });
 
@@ -91,11 +91,15 @@ dbg.BindKey('s', [&dbg] { dbg.SaveParams(); });
 bool loop_video = is_file_source;   // 视频文件时默认开启
 dbg.BindKey('l', [&loop_video] { loop_video = !loop_video; });
 
-// 切换识别颜色（c 键）
+// ROI 管理器（与检测器解耦，独立负责帧间 ROI 状态机）
+mv::modules::RoiManager roi_mgr;
+
+// 切换识别颜色（c 键）——同时重置 ROI，避免旧区域锁死新目标
 mv::ArmorColor enemy_color = mv::ArmorColor::RED;  // 或从配置读取
-dbg.BindKey('c', [&enemy_color] {
+dbg.BindKey('c', [&enemy_color, &roi_mgr] {
     enemy_color = (enemy_color == mv::ArmorColor::RED)
         ? mv::ArmorColor::BLUE : mv::ArmorColor::RED;
+    roi_mgr.Reset();
 });
 
 // 5. 主循环
@@ -118,8 +122,13 @@ while (true) {
         continue;
     }
 
-    auto t   = std::chrono::steady_clock::now();
-    auto det = detector.Detect(frame, enemy_color);
+    auto t = std::chrono::steady_clock::now();
+
+    // ROI 流水线：裁剪 → 检测（局部坐标）→ 还原 + 更新状态
+    auto [cropped, roi_offset] = roi_mgr.Crop(frame);
+    auto det = detector.Detect(cropped, enemy_color);
+    roi_mgr.RestoreAndUpdate(det, roi_offset, frame.size());
+
     for (auto& d : det) solver.Solve(d);
     auto ctrl = predictor.Predict(det, t, enemy_color);
 
@@ -129,7 +138,9 @@ while (true) {
         (enemy_color == mv::ArmorColor::RED ? "RED" : "BLUE") +
         "  [c]toggle";
     dbg.TickFrame(!det.empty(), int(det.size()));
-    dbg.Feed(frame, detector.GetDebugData(), det, ctrl, detector.GetParams(), status);
+    // 传入 roi_mgr.GetRoiRect() 供 5 键 ROI 视图使用
+    dbg.Feed(frame, detector.GetDebugData(), det, ctrl, detector.GetParams(), status,
+             roi_mgr.GetRoiRect());
 }
 
 // 6. 收尾
@@ -161,7 +172,7 @@ camera.Close();
 | `Poll()` → `{quit, paused}` | 等待 1 ms 按键，分发绑定动作；**每帧调用一次** |
 | `ApplyParams()` | 将所有 Trackbar 当前值通过 `apply` 回调推送到外部 Params |
 | `TickFrame(bool, int)` | 向 MetricsTracker 报告本帧检测结果 |
-| `Feed(raw, dbg, dets, ctrl, params[, status])` | 渲染主/debug 窗口；`status` 可选，传入后显示在 HUD 第 3 行（橙色）|
+| `Feed(raw, dbg, dets, ctrl, params[, status[, roi_rect]])` | 渲染主/debug 窗口；`status` 可选显示在 HUD 第 3 行；`roi_rect` 供 5 键 ROI 视图使用（默认空 = 未激活）|
 | `SaveParams()` | 将当前参数写入 `Config::save_yaml`（YAML section = `"armor_detector"`） |
 | `PrintStats()` | 终端输出总帧数 / 检测率 / 平均 FPS |
 
@@ -188,6 +199,7 @@ struct ParamDesc {
 | `2` | 视图：通道差分图（diff）|
 | `3` | 视图：二值化图（binary）|
 | `4` | 视图：灯条可视化图（lights）|
+| `5` | 视图：ROI 区域可视化（原图 + 青色 ROI 矩形 + 检测框）|
 
 ### `mv-video-test` 自定义按键
 
@@ -195,7 +207,7 @@ struct ParamDesc {
 |------|------|
 | `s` | 将当前 Trackbar 参数写入 `debug_override.yaml` |
 | `l` | 切换视频循环播放开/关（仅对视频文件有效；默认**开启**）|
-| `c` | 切换识别颜色 RED ↔ BLUE，HUD 第 3 行实时反映，终端打印日志 |
+| `c` | 切换识别颜色 RED ↔ BLUE，HUD 第 3 行实时反映，同时重置 ROI 状态 |
 
 ---
 
@@ -207,6 +219,7 @@ struct ParamDesc {
 | 2 | `DIFF` | `B-G` 通道差分图（灰度→BGR），高亮红/蓝光源区域 |
 | 3 | `BINARY` | 二值化后的掩码图，用于判断灯条是否被正确提取 |
 | 4 | `LIGHTS` | 原图叠加灯条轮廓（每根灯条通过筛选后绘制黄色旋转矩形）|
+| 5 | `ROI` | 原图 + 青色 ROI 矩形（面积=0时显示 "ROI: FULL FRAME"）+ 检测框 |
 
 主窗口每种视图均叠加 HUD：
 - **左上第 1 行**（黄色）：帧号 / FPS / 当前视图名 / 按键提示
@@ -256,8 +269,11 @@ armor_detector:
   max_angle_diff: 7.5
 ```
 
-> **路径**：`configs/debug/debug_override.yaml`（与 `vision.yaml` 等正式配置同在 `configs/` 下，
+> **路径**：`src/config/debug/debug_override.yaml`（配置文件已统一迁移至 `src/config/`，
 > 子目录 `debug/` 由 `ParamTuner::SaveTo()` 内部调用 `std::filesystem::create_directories` 自动创建）。
+> `CONFIG_FILE_PATH` 由 CMake 注入，等于 `${CMAKE_SOURCE_DIR}/src/config`。
+
+> **启动时自动加载**：`mv-video-test` 启动时若文件存在，会自动用 `debug_override.yaml` 的参数重初始化检测器，无需手动恢复上次调参结果。
 
 > **注意**：此文件不会修改 `vision.yaml`，需手动将调优结果回写到正式配置。
 

@@ -240,13 +240,17 @@ struct Params {
 ```
 bscArmorDetector（头文件）
   ├─ Params         — 可 Hot-reload 的算法参数
-  ├─ DebugData      — diff / binary 调试图像（lights_vis 已移出）
+  ├─ DebugData      — diff / binary 调试图像（仅包含局部帧的中间过程图，坐标恢复由 RoiManager 负责）
   └─ std::unique_ptr<Impl> impl_
           ├─ MakeBinary(frame, color)     → 三路融合二值图
           ├─ FindLightBars(binary, frame) → 灯条几何过滤，返回 vector<LightBar>
           ├─ IsValidArmor(la, lb)         → 双灯条配对合法性检查
           └─ MakeDetection(la, lb)        → 构造 Detection 对象
 ```
+
+> **ROI 状态机已完全解耦**：`BasicArmorDetector` 是纯无状态检测器，每次 `Detect(frame)` 
+> 接受任意输入（全图或 ROI 片），返回相对于该输入的坐标。
+> ROI 裁剪 / 坐标恢复 / 帧间状态由独立的 `RoiManager`（`roi_manager.hpp`）负责。
 
 **灯条可视化**（原 `DebugData::lights_vis` 已移除）改由 `src/tool/debug/light_vis_painter.hpp`
 提供的 `PaintLightBarsVis(binary, raw_frame, params)` 自由函数完成，
@@ -263,6 +267,7 @@ bscArmorDetector（头文件）
 | `module/armor/basic_armor.hpp` | 原始配置结构体（Armor_Config 等）|
 | `src/modules/armor_detector/basic_armor_detector.hpp` | 重构接口 + Params + DebugData |
 | `src/modules/armor_detector/basic_armor_detector.cpp` | 重构实现（Pimpl + 子函数：`MakeBinary`/`FindLightBars`/`IsValidArmor`/`MakeDetection`）|
+| `src/modules/armor_detector/roi_manager.hpp` | 帧间 ROI 状态机（header-only），已与检测器完全解耦；`Crop`/`RestoreAndUpdate`/`Reset`/`GetRoiRect` |
 | `src/tool/debug/light_vis_painter.hpp/.cpp` | 灯条可视化自由函数 `PaintLightBarsVis()`，已从 `DebugData.lights_vis` 移出 |
-| `src/test/video_pipeline_test.cpp` | 离线调试主程序（含 Trackbar）|
-| `configs/vision.yaml` | 主配置（`detector:` 节点）|
+| `src/test/video_pipeline_test.cpp` | 离线调试主程序（含 Trackbar ＋ROI）|
+| `src/config/vision.yaml` | 主配置（`detector:` 节点）|
