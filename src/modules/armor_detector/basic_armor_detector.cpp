@@ -317,6 +317,10 @@ std::vector<Detection> BasicArmorDetector::Detect(const cv::Mat& frame,
     return {};
   }
 
+  // 始终记录全图尺寸，默认 ROI 偶量为全魔
+  impl_->debug_data.frame_size = frame.size();
+  impl_->debug_data.roi_offset = {0, 0};
+
   // ── ROI 裁剪：用上一帧目标区域缩小本帧处理范围 ────────────────────────────
   cv::Point2f    roi_offset{0.0F, 0.0F};
   const cv::Mat* input_ptr = &frame;
@@ -332,6 +336,8 @@ std::vector<Detection> BasicArmorDetector::Detect(const cv::Mat& frame,
       input_ptr  = &cropped;
       roi_offset = {static_cast<float>(SAFE_ROI.x),
                     static_cast<float>(SAFE_ROI.y)};
+      // ✔ 同步到 debug_data 供调试渲染层使用
+      impl_->debug_data.roi_offset = {SAFE_ROI.x, SAFE_ROI.y};
     }
   }
 

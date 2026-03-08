@@ -96,8 +96,10 @@ class BasicArmorDetector final : public IDetector {
    */
   struct DebugData {
     cv::Mat diff;    ///< 双通道差值颜色掩码（灰度单通道）
-    cv::Mat binary;  ///< 形态学处理后的二值图
-  };
+    cv::Mat binary;  ///< 形态学处理后的二值图    /// 当前帧 ROI 裁剪区域左上角（全图坐标），全零表示未使用 ROI
+    cv::Point2i roi_offset{0, 0};
+    /// 原始帧尺寸（用于将 ROI 二値图还原到全图坐标）
+    cv::Size frame_size{0, 0};  };
 
   void EnableDebug(bool enabled) noexcept;
   [[nodiscard]] const DebugData& GetDebugData() const noexcept;

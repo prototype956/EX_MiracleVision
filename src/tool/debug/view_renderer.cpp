@@ -108,6 +108,58 @@ void DrawDebugOverlay(cv::Mat& bin_bgr, const mv::modules::BasicArmorDetector::P
 
 }  // anonymous namespace
 
+// ── ROI 辅助：将 ROI 局部二值图还原到全图尺寸 ─────────────────────────────
+
+namespace {
+
+/**
+ * @brief 将 ROI 局部 binary 粘贴到全图尺寸的 Mat 中。
+ *
+ * 当 ROI 未激活（offset=0，binary 已是全图尺寸）时直接返回 binary 引用。
+ * 安全：对超出边界的区域做裁剪，不会访问越界内存。
+ */
+cv::Mat MakeFullBinary(const mv::modules::BasicArmorDetector::DebugData& dbg) {
+  if (dbg.binary.empty()) {
+    return {};
+  }
+  if (dbg.frame_size.area() == 0 ||
+      (dbg.roi_offset == cv::Point2i{0, 0} &&
+       dbg.binary.size() == dbg.frame_size)) {
+    return dbg.binary;
+  }
+  cv::Mat full = cv::Mat::zeros(dbg.frame_size, CV_8UC1);
+  const cv::Rect PASTE_RECT{dbg.roi_offset, dbg.binary.size()};
+  const cv::Rect SAFE =
+      PASTE_RECT & cv::Rect(cv::Point{0, 0}, dbg.frame_size);
+  if (SAFE.area() > 0) {
+    // 只拷贝安全区域内的部分（防溢出）
+    const cv::Rect SRC_RECT{cv::Point{0, 0}, SAFE.size()};
+    dbg.binary(SRC_RECT).copyTo(full(SAFE));
+  }
+  return full;
+}
+
+cv::Mat MakeFullDiff(const mv::modules::BasicArmorDetector::DebugData& dbg) {
+  if (dbg.diff.empty()) {
+    return {};
+  }
+  if (dbg.frame_size.area() == 0 ||
+      (dbg.roi_offset == cv::Point2i{0, 0} &&
+       dbg.diff.size() == dbg.frame_size)) {
+    return dbg.diff;
+  }
+  cv::Mat full = cv::Mat::zeros(dbg.frame_size, CV_8UC1);
+  const cv::Rect PASTE_RECT{dbg.roi_offset, dbg.diff.size()};
+  const cv::Rect SAFE =
+      PASTE_RECT & cv::Rect(cv::Point{0, 0}, dbg.frame_size);
+  if (SAFE.area() > 0) {
+    dbg.diff(cv::Rect{cv::Point{0, 0}, SAFE.size()}).copyTo(full(SAFE));
+  }
+  return full;
+}
+
+}  // namespace (ROI helpers)
+
 // ── Impl（public struct，成员命名 lower_case 无后缀）─────────────────────────
 
 struct ViewRenderer::Impl {
@@ -153,14 +205,23 @@ void ViewRenderer::Render(const cv::Mat& raw,
   // ── 选择主视图内容 ────────────────────────────────────────────────────
   cv::Mat display;
   switch (impl_->view) {
-    case ViewMode::DIFF:
-      cv::cvtColor(dbg.diff.empty() ? raw : dbg.diff, display, cv::COLOR_GRAY2BGR);
+    case ViewMode::DIFF: {
+      const cv::Mat FULL_DIFF = MakeFullDiff(dbg);
+      cv::cvtColor(FULL_DIFF.empty() ? (cv::Mat)cv::Mat::zeros(raw.size(), CV_8UC1)
+                                     : FULL_DIFF,
+                   display, cv::COLOR_GRAY2BGR);
       break;
-    case ViewMode::BINARY:
-      cv::cvtColor(dbg.binary.empty() ? raw : dbg.binary, display, cv::COLOR_GRAY2BGR);
+    }
+    case ViewMode::BINARY: {
+      const cv::Mat FULL_BIN = MakeFullBinary(dbg);
+      cv::cvtColor(FULL_BIN.empty() ? (cv::Mat)cv::Mat::zeros(raw.size(), CV_8UC1)
+                                    : FULL_BIN,
+                   display, cv::COLOR_GRAY2BGR);
       break;
+    }
     case ViewMode::LIGHTS:
-      display = mv::tool::PaintLightBarsVis(dbg.binary, raw, params);
+      // 将 ROI 二值图还原到全图后再送给 PaintLightBarsVis（确保轮廓坐标正确）
+      display = mv::tool::PaintLightBarsVis(MakeFullBinary(dbg), raw, params);
       break;
     default:  // ViewMode::RESULT
       display = raw.clone();
@@ -174,10 +235,11 @@ void ViewRenderer::Render(const cv::Mat& raw,
   DrawHUD(display, frame_idx, fps, ctrl, impl_->view, params, status);
   cv::imshow(impl_->main_win, display);
 
-  // ── Debug 窗口：始终显示 binary 图 ────────────────────────────────────
-  if (!dbg.binary.empty()) {
+  // ── Debug 窗口：始终显示还原到全图的 binary 图 ────────────────────────
+  const cv::Mat FULL_BIN_FOR_DBG = MakeFullBinary(dbg);
+  if (!FULL_BIN_FOR_DBG.empty()) {
     cv::Mat bin_bgr;
-    cv::cvtColor(dbg.binary, bin_bgr, cv::COLOR_GRAY2BGR);
+    cv::cvtColor(FULL_BIN_FOR_DBG, bin_bgr, cv::COLOR_GRAY2BGR);
     DrawDebugOverlay(bin_bgr, params);
     cv::imshow(impl_->debug_win, bin_bgr);
   }

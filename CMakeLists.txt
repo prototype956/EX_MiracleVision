@@ -79,11 +79,11 @@ message(STATUS "")
 # 配置路径定义
 # ============================================================================
 
-set(CONFIG_FILE_PATH "${CMAKE_SOURCE_DIR}/configs"
+set(CONFIG_FILE_PATH "${CMAKE_SOURCE_DIR}/src/config"
     CACHE PATH "Configuration files directory")
 set(SOURCE_PATH "${CMAKE_SOURCE_DIR}"
     CACHE PATH "Source code root directory")
-set(SAVE_FILE_PATH "${CMAKE_SOURCE_DIR}/configs/camera"
+set(SAVE_FILE_PATH "${CMAKE_SOURCE_DIR}/src/config/camera"
     CACHE PATH "Save file directory")
 
 message(STATUS "Path configuration:")

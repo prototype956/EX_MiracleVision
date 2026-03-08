@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -49,9 +50,9 @@ std::pair<YAML::Node, bool> ParseArgs(int argc, char** argv) {
 
   if (argc > 1) {
     const std::string SRC(argv[1]);
-    const bool IS_INDEX = !SRC.empty() &&
-        std::all_of(SRC.begin(), SRC.end(),
-                    [](unsigned char chr) { return std::isdigit(chr) != 0; });
+    const bool IS_INDEX =
+        !SRC.empty() && std::all_of(SRC.begin(), SRC.end(),
+                                    [](unsigned char chr) { return std::isdigit(chr) != 0; });
     if (IS_INDEX) {
       cam_cfg["source"] = std::stoi(SRC);
     } else {
@@ -67,10 +68,8 @@ std::pair<YAML::Node, bool> ParseArgs(int argc, char** argv) {
 
 // ── 辅助函数 2：初始化算法模块 ─────────────────────────────────────────────
 
-bool InitModules(mv::modules::BasicArmorDetector& detector,
-                 mv::modules::PnpSolver& solver,
-                 mv::modules::SimplePredictor& predictor,
-                 const YAML::Node& root_cfg) {
+bool InitModules(mv::modules::BasicArmorDetector& detector, mv::modules::PnpSolver& solver,
+                 mv::modules::SimplePredictor& predictor, const YAML::Node& root_cfg) {
   return detector.Init(root_cfg) && solver.Init(root_cfg) && predictor.Init(root_cfg);
 }
 
@@ -80,11 +79,9 @@ bool InitModules(mv::modules::BasicArmorDetector& detector,
  * @brief 视频播完后尝试重新打开以循环播放。
  * @return true → 应 continue 主循环；false → 应 break（无法重开或非视频文件）
  */
-bool HandleEndOfSource(bool loop_video, bool is_file_source,
-                        mv::hal::OpenCvCamera& camera,
-                        const YAML::Node& cam_cfg,
-                        mv::modules::SimplePredictor& predictor,
-                        const YAML::Node& root_cfg) {
+bool HandleEndOfSource(bool loop_video, bool is_file_source, mv::hal::OpenCvCamera& camera,
+                       const YAML::Node& cam_cfg, mv::modules::SimplePredictor& predictor,
+                       const YAML::Node& root_cfg) {
   if (!loop_video || !is_file_source) {
     return false;
   }
@@ -139,9 +136,8 @@ void RegisterDetectorParams(mv::tool::DebugSession& dbg,
                 [&params](int val) { params.max_armor_ratio = static_cast<float>(val) / 10.F; },
                 [&params] { return static_cast<double>(params.max_armor_ratio); }});
 
-  dbg.AddParam({"AngleDiff x10  ", "max_angle_diff",
-                static_cast<int>(params.max_angle_diff * 10.F), 900,
-                [&params](int val) { params.max_angle_diff = static_cast<float>(val) / 10.F; },
+  dbg.AddParam({"AngleDiff x10  ", "max_angle_diff", static_cast<int>(params.max_angle_diff * 10.F),
+                900, [&params](int val) { params.max_angle_diff = static_cast<float>(val) / 10.F; },
                 [&params] { return static_cast<double>(params.max_angle_diff); }});
 
   dbg.AddParam({"MinArea        ", "min_area", static_cast<int>(params.min_area), 500,
@@ -174,6 +170,21 @@ int main(int argc, char** argv) {
     if (!InitModules(detector, solver, predictor, ROOT_CFG)) {
       MV_LOG_ERROR("video-test", "模块初始化失败");
       return EXIT_FAILURE;
+    }
+
+    // ── 读取调试参数覆盖文件（s 键保存的上次调参结果）──────────────────
+    const std::string OVERRIDE_YAML =
+        std::string(CONFIG_FILE_PATH) + "/debug/debug_override.yaml";
+    if (std::filesystem::exists(OVERRIDE_YAML)) {
+      try {
+        const YAML::Node OV = YAML::LoadFile(OVERRIDE_YAML);
+        if (OV && OV["detector"]) {
+          detector.Init(OV);  // 用覆盖文件的 detector 节点重新初始化
+          MV_LOG_INFO("video-test", "已应用调试参数覆盖: {}", OVERRIDE_YAML);
+        }
+      } catch (const std::exception& e) {
+        MV_LOG_WARN("video-test", "读取调试覆盖文件失败（忽略）: {}", e.what());
+      }
     }
     detector.EnableDebug(true);
     MV_LOG_INFO("video-test", "所有模块初始化成功");
