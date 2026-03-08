@@ -12,7 +12,7 @@
  * 【按键（内置于 DebugSession）】
  *   q / ESC → 退出             空格 → 暂停/继续
  *   1 → 检测结果视图           2 → 通道差分图
- *   3 → 二值化图               4 → 灯条可视化图
+ *   3 → 二值化图               4 → 灯条可视化图   5 → ROI 区域可视化
  *   s → 将当前参数写入 debug_override.yaml
  *   l → 切换视频循环播放（默认开启，仅对视频文件有效）
  *   c → 切换识别颜色（红/蓝），HUD 实时显示
@@ -26,6 +26,7 @@
 #include "hal/camera/opencv_camera.hpp"
 #include "interfaces/types.hpp"
 #include "modules/armor_detector/basic_armor_detector.hpp"
+#include "modules/armor_detector/roi_manager.hpp"
 #include "modules/pnp_solver/pnp_solver.hpp"
 #include "modules/simple_predictor/simple_predictor.hpp"
 #include "tool/debug/debug_session.hpp"
@@ -33,11 +34,11 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
-#include <filesystem>
 #include <iostream>
 #include <string>
 #include <vector>
 
+#include <filesystem>
 #include <yaml-cpp/yaml.h>
 
 namespace {
@@ -173,8 +174,7 @@ int main(int argc, char** argv) {
     }
 
     // ── 读取调试参数覆盖文件（s 键保存的上次调参结果）──────────────────
-    const std::string OVERRIDE_YAML =
-        std::string(CONFIG_FILE_PATH) + "/debug/debug_override.yaml";
+    const std::string OVERRIDE_YAML = std::string(CONFIG_FILE_PATH) + "/debug/debug_override.yaml";
     if (std::filesystem::exists(OVERRIDE_YAML)) {
       try {
         const YAML::Node OV = YAML::LoadFile(OVERRIDE_YAML);
@@ -211,16 +211,18 @@ int main(int argc, char** argv) {
     bool loop_video = is_file_source;
     dbg.BindKey('l', [&loop_video] { loop_video = !loop_video; });
 
-    // ── 6. 读取敌方颜色 + 切换键 ────────────────────────────────────────────
+    // ── 6. 读取敢方颜色 + 切换键 + ROI 管理器 ──────────────────────────────────
     const auto ENEMY_STR_INIT = cfg.Get<std::string>("auto_aim.enemy_color", "red");
     mv::ArmorColor enemy_color =
         (ENEMY_STR_INIT == "blue") ? mv::ArmorColor::BLUE : mv::ArmorColor::RED;
-    MV_LOG_INFO("video-test", "敌方颜色: {}", ENEMY_STR_INIT);
+    MV_LOG_INFO("video-test", "敢方颜色: {}", ENEMY_STR_INIT);
 
-    dbg.BindKey('c', [&enemy_color, &detector] {
+    mv::modules::RoiManager roi_mgr;
+
+    dbg.BindKey('c', [&enemy_color, &roi_mgr] {
       enemy_color =
           (enemy_color == mv::ArmorColor::RED) ? mv::ArmorColor::BLUE : mv::ArmorColor::RED;
-      detector.ResetRoi();  // 切换颜色时清空 ROI，避免旧区域锁死新目标
+      roi_mgr.Reset();  // 切换颜色时清空 ROI，避免旧区域锁死新目标
     });
 
     // ── 7. 主循环 ────────────────────────────────────────────────────────────
@@ -247,7 +249,12 @@ int main(int argc, char** argv) {
       }
 
       const auto T_FRAME = std::chrono::steady_clock::now();
-      auto detections = detector.Detect(frame, enemy_color);
+
+      // ROI 裁剪 → 检测（局部坐标）→ 坐标恢复 + 更新 ROI 状态
+      auto [cropped, roi_offset] = roi_mgr.Crop(frame);
+      auto detections = detector.Detect(cropped, enemy_color);
+      roi_mgr.RestoreAndUpdate(detections, roi_offset, frame.size());
+
       for (auto& det : detections) {
         solver.Solve(det);
       }
@@ -257,7 +264,8 @@ int main(int argc, char** argv) {
                                  ((enemy_color == mv::ArmorColor::RED) ? "RED" : "BLUE") +
                                  std::string("  [c]toggle");
       dbg.TickFrame(!detections.empty(), static_cast<int>(detections.size()));
-      dbg.Feed(frame, detector.GetDebugData(), detections, CTRL, detector.GetParams(), STATUS);
+      dbg.Feed(frame, detector.GetDebugData(), detections, CTRL, detector.GetParams(), STATUS,
+               roi_mgr.GetRoiRect());
     }
 
     // ── 8. 统计输出 + 清理 ───────────────────────────────────────────────────

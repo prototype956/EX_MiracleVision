@@ -1,6 +1,6 @@
 # 重构进展追踪
 
-> 最后更新：2026-03-06
+> 最后更新：2026-03-07
 > 分支：`refactor/core-infra`
 
 ---
@@ -14,6 +14,7 @@ Stage 3 ─ 接口层 + 工厂      ✅ 完成
 Stage 4 ─ 线程 Pipeline      ✅ 完成
 Stage 5 ─ 状态机 (FSM)       ✅ 完成
 Stage 6 ─ 替换旧模块 + main  🔶 进行中（模块 + main 完成，旧代码清理待做）
+Stage 7 ─ 工具层 + 可视化      🔶 进行中（FoxgloveSink 实现完成，接入待做）
 ```
 
 ---
@@ -309,6 +310,56 @@ mv-vision-main          ✓ 零警告零错误（8.7 MB 可执行文件）
 | `src/modules/simple_predictor/` | 无 EKF，无飞行时间延迟补偿，yaw/pitch 为直通值 | 中（提升精度时替换） |
 | `src/fsm/vision_fsm.cpp` | `ENERGY_BUFF` 状态逻辑未接入上行 `mode` 字段 | 低 |
 | `base/` `devices/` `module/` | 旧代码未清理，待新模块验证稳定后删除 | 低（Stage 6 末尾）|
+
+---
+
+---
+
+## Stage 7：工具层 + Foxglove 可视化 🔶
+
+**提交**：`de27a5f`
+
+### 交付物
+
+| 文件 | 说明 |
+|------|------|
+| `src/tool/foxglove/CMakeLists.txt` | `mv-tool-foxglove` 静态库声明 |
+| `src/tool/foxglove/foxglove_sink.hpp` | 对外唯一公开头文件（PImpl 门面，零 SDK 依赖）|
+| `src/tool/foxglove/foxglove_sink.cpp` | `Impl` 实现：WebSocket Server 初始化、参数管理、委托 5 个子发布器 |
+| `src/tool/foxglove/detail/utils.hpp` | header-only 共用辅助：时间戳转换、颜色常量、`MakePose`、`EigenToFoxPose`、`MakeArrow` |
+| `src/tool/foxglove/detail/image_publisher.hpp/.cpp` | `cv::Mat` → `RawImage`，按 topic 懒建 `RawImageChannel` |
+| `src/tool/foxglove/detail/detection_publisher.hpp/.cpp` | `mv::Detection` 列表 → `ImageAnnotations`（2D）+ `SceneUpdate`（3D 装甲板立方体）|
+| `src/tool/foxglove/detail/pnp_visualizer.hpp/.cpp` | PnP 三层可视化：调试图像 / RGB 坐标轴箭头 / JSON 残差统计 |
+| `src/tool/foxglove/detail/tf_publisher.hpp/.cpp` | `Eigen::Matrix4d` → `/tf`（`FrameTransforms`）|
+| `src/tool/foxglove/detail/thread_monitor.hpp/.cpp` | `ThreadMetrics` 列表 → `pipeline/nodes`（JSON via `RawChannel`）|
+| `src/tool/CMakeLists.txt` | 新增 `USE_FOXGLOVE_SDK` 开关控制 `add_subdirectory(foxglove)` |
+| `docs/refractor/tool/foxglove/FOXGLOVE_MODULE.md` | 12 节完整模块文档 |
+
+### 关键设计决策
+
+- **PImpl 完全隔离**：`foxglove_sink.hpp` 不 include 任何 SDK 头文件，所有 SDK 类型（`WebSocketServer`、`RawImageChannel` 等）完全封装在 `foxglove_sink.cpp` 及 `detail/*.cpp` 内，修改 SDK 版本只重编这些 `.cpp`。
+- **5 个子发布器**：`ImagePublisher`、`DetectionPublisher`、`PnpVisualizer`、`TfPublisher`、`ThreadMonitor` 各自独立，单一职责，内部各持一把 `std::mutex`，可在任意线程安全调用。
+- **FoxgloveSinkConfig 独立结构体**：GCC 不允许含非平凡成员的嵌套类作为函数默认参数，将 `Config` 移出类外为 `FoxgloveSinkConfig`，类内用 `using Config = FoxgloveSinkConfig;` 保留旧名，并分拆为 `FoxgloveSink()` + `explicit FoxgloveSink(Config)` 双构造函数（前者委托后者）。
+- **双向参数管理**：`SetParameterCallback` 接受来自 Foxglove Studio 的 JSON 参数写入；`UpdateParameters` / `GetParameter` 支持代码侧主动推送参数至 Studio，实现实时调参可视化（阈值、增益等）。
+- **PnP 三层可视化**：调试图（`pnp/debug_image`，底图+角点+连线+距离标注）+ 3D 坐标轴（`pnp/axes_3d`，RGB 箭头三轴）+ JSON 残差（`pnp/residuals`，含 `x/y/z/dist/yaw/pitch`），满足不同调试粒度需求。
+- **线程健康看板**：`ThreadMetrics`（`node_name / fps / latency_ms / drop_count / is_alive / error_msg`）序列化为 JSON 发布到 `pipeline/nodes`，Foxglove Studio 自定义面板可实时展示各节点健康状态。
+- **CMake 开关**：`USE_FOXGLOVE_SDK=ON`（默认）时才链接 SDK；`OFF` 时跳过整个子目录，零侵入已有目标。
+
+### 编译状态
+
+```
+mv-tool-foxglove  ✓ 零警告零错误
+整体构建（16 个目标，make -j）  ✓ 全部通过，无回归
+```
+
+### 待完成（Stage 7 剩余）
+
+| 任务 | 说明 | 优先级 |
+|------|------|--------|
+| `FoxgloveSink` 接入 `DebugSession` | `debug_session.cpp` 持有 `optional<FoxgloveSink>`，`Feed()` 透传图像和检测结果 | 高 |
+| `FoxgloveSink` 接入 `VisionPipeline` | `DetectNode::Run()` 调 `PublishDetections` + `PublishPnpResult`；`VisionPipeline` 定时汇聚调 `PublishThreadMetrics` | 高 |
+| PnP IPPE 双解消歧 | `PnpSolver` 移植旧代码中 `SOLVEPNP_IPPE` 双解+远距离消歧逻辑，边改边在 Foxglove 观察 `pnp/axes_3d` | 中 |
+| `ThreadMetrics` 上报机制 | `PipelineNode` 内计时，`VisionPipeline` 每 100ms 汇聚后调 `PublishThreadMetrics` | 中 |
 
 ---
 

@@ -13,11 +13,11 @@
  */
 #include "tool/foxglove/detail/detection_publisher.hpp"
 
+#include "tool/foxglove/detail/utils.hpp"
+
 #include <string>
 
 #include <spdlog/spdlog.h>
-
-#include "tool/foxglove/detail/utils.hpp"
 
 namespace mv::tool::detail {
 
@@ -86,9 +86,9 @@ void DetectionPublisher::Publish(const std::vector<mv::Detection>& dets, uint64_
       label.text_color = ColorWhite();
       label.background_color = {box_color.r, box_color.g, box_color.b, 0.5};
       // 位置：左上角上方 15px
-      label.position = foxglove::schemas::Point2{
-          static_cast<double>(det.points[3].x),   // 左上角 x
-          static_cast<double>(det.points[3].y) - 18.0};  // 上方 18px
+      label.position =
+          foxglove::schemas::Point2{static_cast<double>(det.points[3].x),          // 左上角 x
+                                    static_cast<double>(det.points[3].y) - 18.0};  // 上方 18px
       annot_msg.texts.push_back(std::move(label));
     }
 
@@ -133,7 +133,7 @@ void DetectionPublisher::Publish(const std::vector<mv::Detection>& dets, uint64_
       text.pose = MakePose(x, y + 0.07, z, 0.0, 0.0, 0.0, 1.0);
       text.text = ArmorLabel(det);
       text.font_size = 0.04;
-      text.billboard = true;   // 始终面朝摄像机
+      text.billboard = true;  // 始终面朝摄像机
       text.color = ColorWhite();
       entity.texts.push_back(std::move(text));
 

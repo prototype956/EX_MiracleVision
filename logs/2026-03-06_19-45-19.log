@@ -1,0 +1,7 @@
+[2026-03-06 19:45:19.621] [info] [video-test] ══════════ mv-video-test 启动 ══════════
+[2026-03-06 19:45:19.621] [info] [BasicArmorDetector] Init OK — thresh=160 angle_lim=40.0° armor_ratio=[1.0,5.5]
+[2026-03-06 19:45:19.621] [info] [PnpSolver] Init OK — fx=1764.1 fy=1764.3 cx=644.9 cy=499.5
+[2026-03-06 19:45:19.621] [info] [SimplePredictor] Init OK — min_detect=5, max_lost=15
+[2026-03-06 19:45:19.621] [info] [video-test] 所有模块初始化成功，DebugData 已开启
+[2026-03-06 19:45:19.621] [error] [HAL.Camera.OpenCV] failed to open device index 0
+[2026-03-06 19:45:19.621] [error] [video-test] cannot open camera/video source — 请通过 argv[1] 传入视频路径或摄像头索引

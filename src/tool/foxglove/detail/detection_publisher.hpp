@@ -8,14 +8,14 @@
  */
 #pragma once
 
+#include "interfaces/types.hpp"
+
 #include <mutex>
-#include <optional>
 #include <vector>
 
 #include <foxglove/context.hpp>
 #include <foxglove/schemas.hpp>
-
-#include "interfaces/types.hpp"
+#include <optional>
 
 namespace mv::tool::detail {
 

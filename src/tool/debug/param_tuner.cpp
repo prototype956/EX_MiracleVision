@@ -5,10 +5,10 @@
 #include "tool/debug/param_tuner.hpp"
 
 #include <deque>
-#include <filesystem>
 #include <fstream>
 #include <stdexcept>
 
+#include <filesystem>
 #include <opencv2/highgui.hpp>
 #include <yaml-cpp/yaml.h>
 
@@ -22,7 +22,7 @@ struct ParamEntry {
 };
 
 struct ParamTuner::Impl {
-  std::string win_name;                   // lower_case，无下划线后缀（struct public）
+  std::string win_name;            // lower_case，无下划线后缀（struct public）
   std::deque<ParamEntry> entries;  // deque: push_back 不使已有元素地址失效
 };
 
@@ -49,8 +49,7 @@ void ParamTuner::AddParam(ParamDesc desc) {
   auto& entry = impl_->entries.back();
   entry.tb_val = entry.desc.init_val;
 
-  cv::createTrackbar(entry.desc.label, impl_->win_name, &entry.tb_val, entry.desc.max_val,
-                     nullptr);
+  cv::createTrackbar(entry.desc.label, impl_->win_name, &entry.tb_val, entry.desc.max_val, nullptr);
 }
 
 void ParamTuner::ApplyAll() {
@@ -80,8 +79,7 @@ void ParamTuner::SaveTo(const std::string& yaml_path, std::string_view section) 
   }
 
   // 写回文件（自动创建父目录）
-  std::filesystem::create_directories(
-      std::filesystem::path(yaml_path).parent_path());
+  std::filesystem::create_directories(std::filesystem::path(yaml_path).parent_path());
   std::ofstream ofs(yaml_path);
   if (!ofs.is_open()) {
     throw std::runtime_error("ParamTuner::SaveTo: cannot open file: " + yaml_path);

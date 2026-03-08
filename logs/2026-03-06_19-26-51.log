@@ -1,0 +1,11 @@
+[2026-03-06 19:26:51.528] [info] [video-test] ══════════ mv-video-test 启动 ══════════
+[2026-03-06 19:26:51.529] [info] [BasicArmorDetector] Init OK — thresh=160 angle_lim=40.0° armor_ratio=[1.0,5.5]
+[2026-03-06 19:26:51.529] [info] [PnpSolver] Init OK — fx=1764.1 fy=1764.3 cx=644.9 cy=499.5
+[2026-03-06 19:26:51.529] [info] [SimplePredictor] Init OK — min_detect=5, max_lost=15
+[2026-03-06 19:26:51.529] [info] [video-test] 所有模块初始化成功
+[2026-03-06 19:26:51.544] [info] [HAL.Camera.OpenCV] opened '/home/piesia-02/EX_MiracleVision/video/debug/17.mp4'
+[2026-03-06 19:26:51.544] [info] [video-test] 相机/视频 打开成功
+[2026-03-06 19:26:51.544] [info] [video-test] 敌方颜色: red
+[2026-03-06 19:26:58.623] [warning] [HAL.Camera.OpenCV] cap.read() returned false (EOF or device error)
+[2026-03-06 19:26:58.623] [info] [video-test] Grab() 返回 false，视频播放结束或相机断开
+[2026-03-06 19:26:58.624] [info] [video-test] ══════════ mv-video-test 结束 ══════════

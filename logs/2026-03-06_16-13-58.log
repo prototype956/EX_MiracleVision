@@ -1,0 +1,7 @@
+[2026-03-06 16:13:58.480] [info] [main] ══════════ MiracleVision Starting ══════════
+[2026-03-06 16:13:58.480] [info] [main] Config : /tmp/test_vision.yaml
+[2026-03-06 16:13:58.480] [info] [main] LogLevel: info
+[2026-03-06 16:13:58.480] [info] [main] Signal handlers registered (SIGINT/SIGTERM=stop, SIGUSR1=reload)
+[2026-03-06 16:13:58.480] [info] [main] Camera backend: OpenCV
+[2026-03-06 16:13:58.486] [error] [HAL.Camera.OpenCV] failed to open '/dev/null'
+[2026-03-06 16:13:58.486] [error] [main] OpenCvCamera::Open() failed for index/path '/dev/null'

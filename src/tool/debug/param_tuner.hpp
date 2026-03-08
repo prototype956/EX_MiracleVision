@@ -27,8 +27,8 @@ namespace mv::tool {
 struct ParamDesc {
   std::string label;     ///< Trackbar 显示标签
   std::string yaml_key;  ///< 写回 YAML 时使用的字段名（如 "light_thresh"）
-  int         init_val;  ///< 初始整数值（Trackbar 起始位置）
-  int         max_val;   ///< Trackbar 最大整数值
+  int init_val;          ///< 初始整数值（Trackbar 起始位置）
+  int max_val;           ///< Trackbar 最大整数值
 
   /** 将 Trackbar 整数值推送到外部参数结构（每帧调用）*/
   std::function<void(int)> apply;
@@ -77,8 +77,7 @@ class ParamTuner {
    * @param yaml_path  目标文件路径（不存在则创建，存在则合并对应节点）
    * @param section    在 YAML 文件中的节点名（默认 "detector"）
    */
-  void SaveTo(const std::string& yaml_path,
-              std::string_view   section = "detector") const;
+  void SaveTo(const std::string& yaml_path, std::string_view section = "detector") const;
 
  private:
   struct Impl;

@@ -8,9 +8,9 @@
  */
 #include "tool/foxglove/detail/tf_publisher.hpp"
 
-#include <spdlog/spdlog.h>
-
 #include "tool/foxglove/detail/utils.hpp"
+
+#include <spdlog/spdlog.h>
 
 namespace mv::tool::detail {
 
@@ -29,7 +29,7 @@ void TfPublisher::EnsureChannel() {
 }
 
 void TfPublisher::Publish(const std::string& parent, const std::string& child,
-                           const Eigen::Matrix4d& T, uint64_t ts_ns) {
+                          const Eigen::Matrix4d& T, uint64_t ts_ns) {
   std::lock_guard<std::mutex> lock(mtx_);
   EnsureChannel();
   if (!tf_ch_.has_value()) {

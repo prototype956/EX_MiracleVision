@@ -8,7 +8,8 @@
  *   "timestamp_ns": 1741392000000000,
  *   "nodes": [
  *     {"name":"CaptureNode",  "fps":120.1, "latency_ms":2.3, "drop":0,  "alive":true},
- *     {"name":"DetectNode",   "fps":85.7,  "latency_ms":9.8, "drop":2,  "alive":true, "warn":"drop>0"},
+ *     {"name":"DetectNode",   "fps":85.7,  "latency_ms":9.8, "drop":2,  "alive":true,
+ * "warn":"drop>0"},
  *     {"name":"PredictNode",  "fps":85.6,  "latency_ms":0.9, "drop":0,  "alive":true},
  *     {"name":"SerialNode",   "fps":85.5,  "latency_ms":0.4, "drop":0,  "alive":true}
  *   ]
@@ -16,10 +17,10 @@
  */
 #include "tool/foxglove/detail/thread_monitor.hpp"
 
+#include "tool/foxglove/detail/utils.hpp"
+
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
-
-#include "tool/foxglove/detail/utils.hpp"
 
 namespace mv::tool::detail {
 
@@ -37,8 +38,8 @@ void ThreadMonitor::EnsureChannel() {
   }
 }
 
-void ThreadMonitor::Publish(
-    const std::vector<mv::tool::FoxgloveSink::ThreadMetrics>& metrics, uint64_t ts_ns) {
+void ThreadMonitor::Publish(const std::vector<mv::tool::FoxgloveSink::ThreadMetrics>& metrics,
+                            uint64_t ts_ns) {
   std::lock_guard<std::mutex> lock(mtx_);
   EnsureChannel();
   if (!channel_.has_value()) {

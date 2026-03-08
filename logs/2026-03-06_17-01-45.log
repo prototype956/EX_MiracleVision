@@ -1,0 +1,2 @@
+[2026-03-06 17:01:45.974] [info] [video-test] ══════════ mv-video-test 启动 ══════════
+[2026-03-06 17:01:45.974] [error] [HAL.Camera.OpenCV] failed to open device index 0

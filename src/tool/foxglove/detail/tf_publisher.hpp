@@ -8,12 +8,12 @@
 #pragma once
 
 #include <mutex>
-#include <optional>
 #include <string>
 
 #include <Eigen/Dense>
 #include <foxglove/context.hpp>
 #include <foxglove/schemas.hpp>
+#include <optional>
 
 namespace mv::tool::detail {
 

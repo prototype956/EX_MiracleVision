@@ -4,12 +4,12 @@
  */
 #include "tool/foxglove/detail/image_publisher.hpp"
 
+#include "tool/foxglove/detail/utils.hpp"
+
 #include <cstring>
 
-#include <spdlog/spdlog.h>
 #include <opencv2/core.hpp>
-
-#include "tool/foxglove/detail/utils.hpp"
+#include <spdlog/spdlog.h>
 
 namespace mv::tool::detail {
 
@@ -30,8 +30,7 @@ std::string ImagePublisher::DetectEncoding(const cv::Mat& img) {
   }
 }
 
-foxglove::schemas::RawImageChannel* ImagePublisher::GetOrCreateChannel(
-    const std::string& topic) {
+foxglove::schemas::RawImageChannel* ImagePublisher::GetOrCreateChannel(const std::string& topic) {
   auto it = channels_.find(topic);
   if (it != channels_.end()) {
     return &it->second;
@@ -48,7 +47,7 @@ foxglove::schemas::RawImageChannel* ImagePublisher::GetOrCreateChannel(
 }
 
 void ImagePublisher::Publish(const cv::Mat& img, const std::string& topic,
-                              const std::string& frame_id, uint64_t ts_ns) {
+                             const std::string& frame_id, uint64_t ts_ns) {
   if (img.empty()) {
     return;
   }

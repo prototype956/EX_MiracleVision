@@ -8,14 +8,14 @@
  */
 #pragma once
 
+#include "tool/foxglove/foxglove_sink.hpp"  // FoxgloveSink::ThreadMetrics
+
 #include <mutex>
-#include <optional>
 #include <vector>
 
 #include <foxglove/channel.hpp>
 #include <foxglove/context.hpp>
-
-#include "tool/foxglove/foxglove_sink.hpp"  // FoxgloveSink::ThreadMetrics
+#include <optional>
 
 namespace mv::tool::detail {
 

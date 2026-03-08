@@ -1,0 +1,9 @@
+[2026-03-06 16:13:33.804] [info] [main] ══════════ MiracleVision Starting ══════════
+[2026-03-06 16:13:33.804] [info] [main] Config : configs/vision.yaml
+[2026-03-06 16:13:33.804] [info] [main] LogLevel: debug
+[2026-03-06 16:13:33.804] [info] [main] Signal handlers registered (SIGINT/SIGTERM=stop, SIGUSR1=reload)
+[2026-03-06 16:13:33.804] [info] [main] Camera backend: MindVision
+[2026-03-06 16:13:33.804] [warning] [HAL.Camera.MV] MV_HAS_MVSDK not defined, running in stub mode
+[2026-03-06 16:13:33.804] [warning] [main] MindVisionCamera::Open() failed — falling back to OpenCvCamera
+[2026-03-06 16:13:33.805] [error] [HAL.Camera.OpenCV] failed to open device index 0
+[2026-03-06 16:13:33.805] [error] [main] OpenCvCamera fallback also failed — cannot continue

@@ -35,8 +35,8 @@
 
 #include "interfaces/i_solver.hpp"
 
-#include <opencv2/core.hpp>
 #include <Eigen/Core>
+#include <opencv2/core.hpp>
 
 namespace mv::modules {
 
@@ -58,24 +58,22 @@ class PnpSolver final : public ISolver {
 
  private:
   // ── 内参 ──────────────────────────────────────────────────────────────────
-  cv::Mat camera_matrix_;   ///< 3×3，CV_64F
-  cv::Mat dist_coeffs_;     ///< 1×5，CV_64F
+  cv::Mat camera_matrix_;  ///< 3×3，CV_64F
+  cv::Mat dist_coeffs_;    ///< 1×5，CV_64F
 
   // ── 外参（相机 → 云台坐标系）────────────────────────────────────────────
   // 默认：Y 轴翻转（相机 down+Y → 云台 up+Y），等效于旧版简化实现
   // 提供 calibration.R_camera_to_gimbal / t_camera_to_gimbal 后可使用精确外参
   Eigen::Matrix3d R_camera2gimbal_{
-      (Eigen::Matrix3d() << 1.0, 0.0, 0.0,
-                            0.0,-1.0, 0.0,
-                            0.0, 0.0, 1.0).finished()};
+      (Eigen::Matrix3d() << 1.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0).finished()};
   Eigen::Vector3d t_camera2gimbal_{Eigen::Vector3d::Zero()};
 
   // ── 世界坐标模板 ──────────────────────────────────────────────────────────
   // 小装甲：half_w=0.0675, half_h=0.0275
   // 大装甲：half_w=0.115,  half_h=0.0275
   static constexpr float SMALL_HALF_W = 0.0675F;
-  static constexpr float BIG_HALF_W   = 0.115F;
-  static constexpr float HALF_H       = 0.0275F;
+  static constexpr float BIG_HALF_W = 0.115F;
+  static constexpr float HALF_H = 0.0275F;
 
   bool initialized_{false};
 };

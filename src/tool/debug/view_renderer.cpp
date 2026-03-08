@@ -21,10 +21,16 @@ namespace {
 
 const char* ViewModeName(ViewMode mode) noexcept {
   switch (mode) {
-    case ViewMode::DIFF:   return "diff";
-    case ViewMode::BINARY: return "binary";
-    case ViewMode::LIGHTS: return "lights";
-    default:               return "result";
+    case ViewMode::DIFF:
+      return "diff";
+    case ViewMode::BINARY:
+      return "binary";
+    case ViewMode::LIGHTS:
+      return "lights";
+    case ViewMode::ROI:
+      return "roi";
+    default:
+      return "result";
   }
 }
 
@@ -45,7 +51,7 @@ void DrawDetection(cv::Mat& frame, const mv::Detection& det) {
   std::ostringstream oss;
   oss << std::fixed << std::setprecision(2) << "conf:" << det.confidence;
   if (det.is_solved) {
-    oss << " y:" << std::setprecision(1) << det.yaw_angle   * 180.0 / M_PI << "d"
+    oss << " y:" << std::setprecision(1) << det.yaw_angle * 180.0 / M_PI << "d"
         << " p:" << det.pitch_angle * 180.0 / M_PI << "d";
   }
   cv::putText(frame, oss.str(),
@@ -61,7 +67,7 @@ void DrawHUD(cv::Mat& frame, int frame_idx, double fps, const mv::GimbalControl&
   {
     std::ostringstream oss;
     oss << "Frame:" << frame_idx << "  FPS:" << std::fixed << std::setprecision(1) << fps
-        << "  View:[" << ViewModeName(view_mode) << "] 1/2/3/4  [s]save [c]color";
+        << "  View:[" << ViewModeName(view_mode) << "] 1/2/3/4/5  [s]save [c]color";
     cv::putText(frame, oss.str(), cv::Point(10, 24), cv::FONT_HERSHEY_SIMPLEX, 0.50,
                 cv::Scalar(255, 255, 0), 1, cv::LINE_AA);
   }
@@ -99,8 +105,8 @@ void DrawHUD(cv::Mat& frame, int frame_idx, double fps, const mv::GimbalControl&
 void DrawDebugOverlay(cv::Mat& bin_bgr, const mv::modules::BasicArmorDetector::Params& params) {
   std::ostringstream oss;
   oss << "thr:" << params.light_thresh << " ang:" << std::fixed << std::setprecision(0)
-      << params.max_light_angle << " ar:[" << std::setprecision(1) << params.min_armor_ratio
-      << "," << params.max_armor_ratio << "]"
+      << params.max_light_angle << " ar:[" << std::setprecision(1) << params.min_armor_ratio << ","
+      << params.max_armor_ratio << "]"
       << " dff:" << std::setprecision(0) << params.max_angle_diff;
   cv::putText(bin_bgr, oss.str(), cv::Point(4, 20), cv::FONT_HERSHEY_SIMPLEX, 0.46,
               cv::Scalar(0, 255, 255), 1, cv::LINE_AA);
@@ -108,64 +114,42 @@ void DrawDebugOverlay(cv::Mat& bin_bgr, const mv::modules::BasicArmorDetector::P
 
 }  // anonymous namespace
 
-// ── ROI 辅助：将 ROI 局部二值图还原到全图尺寸 ─────────────────────────────
+// ── ROI 辅助：将 ROI 局部图粘贴回全图尺寸 ────────────────────────────────
 
 namespace {
 
 /**
- * @brief 将 ROI 局部 binary 粘贴到全图尺寸的 Mat 中。
+ * @brief 将 ROI 局部单通道图粘贴到全图尺寸的 Mat 中。
  *
- * 当 ROI 未激活（offset=0，binary 已是全图尺寸）时直接返回 binary 引用。
- * 安全：对超出边界的区域做裁剪，不会访问越界内存。
+ * @param src        ROI 局部图（全图或裁剪片段）
+ * @param roi_rect   全图坐标下的 ROI 矩形（面积为 0 = 未激活）
+ * @param frame_size 全图尺寸（用于创建画布）
  */
-cv::Mat MakeFullBinary(const mv::modules::BasicArmorDetector::DebugData& dbg) {
-  if (dbg.binary.empty()) {
+cv::Mat MakeFullMat(const cv::Mat& src, const cv::Rect2i& roi_rect, const cv::Size& frame_size) {
+  if (src.empty()) {
     return {};
   }
-  if (dbg.frame_size.area() == 0 ||
-      (dbg.roi_offset == cv::Point2i{0, 0} &&
-       dbg.binary.size() == dbg.frame_size)) {
-    return dbg.binary;
+  if (roi_rect.area() == 0 || src.size() == frame_size) {
+    return src;
   }
-  cv::Mat full = cv::Mat::zeros(dbg.frame_size, CV_8UC1);
-  const cv::Rect PASTE_RECT{dbg.roi_offset, dbg.binary.size()};
-  const cv::Rect SAFE =
-      PASTE_RECT & cv::Rect(cv::Point{0, 0}, dbg.frame_size);
+  cv::Mat full = cv::Mat::zeros(frame_size, src.type());
+  const cv::Rect PASTE_RECT{roi_rect.tl(), src.size()};
+  const cv::Rect SAFE = PASTE_RECT & cv::Rect(cv::Point{0, 0}, frame_size);
   if (SAFE.area() > 0) {
-    // 只拷贝安全区域内的部分（防溢出）
     const cv::Rect SRC_RECT{cv::Point{0, 0}, SAFE.size()};
-    dbg.binary(SRC_RECT).copyTo(full(SAFE));
+    src(SRC_RECT).copyTo(full(SAFE));
   }
   return full;
 }
 
-cv::Mat MakeFullDiff(const mv::modules::BasicArmorDetector::DebugData& dbg) {
-  if (dbg.diff.empty()) {
-    return {};
-  }
-  if (dbg.frame_size.area() == 0 ||
-      (dbg.roi_offset == cv::Point2i{0, 0} &&
-       dbg.diff.size() == dbg.frame_size)) {
-    return dbg.diff;
-  }
-  cv::Mat full = cv::Mat::zeros(dbg.frame_size, CV_8UC1);
-  const cv::Rect PASTE_RECT{dbg.roi_offset, dbg.diff.size()};
-  const cv::Rect SAFE =
-      PASTE_RECT & cv::Rect(cv::Point{0, 0}, dbg.frame_size);
-  if (SAFE.area() > 0) {
-    dbg.diff(cv::Rect{cv::Point{0, 0}, SAFE.size()}).copyTo(full(SAFE));
-  }
-  return full;
-}
-
-}  // namespace (ROI helpers)
+}  // namespace
 
 // ── Impl（public struct，成员命名 lower_case 无后缀）─────────────────────────
 
 struct ViewRenderer::Impl {
   std::string main_win;
   std::string debug_win;
-  ViewMode    view{ViewMode::RESULT};
+  ViewMode view{ViewMode::RESULT};
 };
 
 // ── 构造 / 析构 ────────────────────────────────────────────────────────────
@@ -179,11 +163,11 @@ ViewRenderer& ViewRenderer::operator=(ViewRenderer&&) noexcept = default;
 // ── 公开接口实现 ────────────────────────────────────────────────────────────
 
 void ViewRenderer::Init(const std::string& main_win, const std::string& debug_win) {
-  impl_->main_win  = main_win;
+  impl_->main_win = main_win;
   impl_->debug_win = debug_win;
-  cv::namedWindow(main_win,  cv::WINDOW_NORMAL);
+  cv::namedWindow(main_win, cv::WINDOW_NORMAL);
   cv::namedWindow(debug_win, cv::WINDOW_NORMAL);
-  cv::resizeWindow(main_win,  960, 540);
+  cv::resizeWindow(main_win, 960, 540);
   cv::resizeWindow(debug_win, 640, 480);
 }
 
@@ -195,34 +179,46 @@ void ViewRenderer::SetView(ViewMode mode) noexcept {
   return impl_->view;
 }
 
-void ViewRenderer::Render(const cv::Mat& raw,
-                          const mv::modules::BasicArmorDetector::DebugData& dbg,
-                          const std::vector<mv::Detection>&                 detections,
-                          const mv::GimbalControl&                          ctrl,
-                          int frame_idx, double fps,
-                          const mv::modules::BasicArmorDetector::Params&    params,
-                          const std::string&                                status) {
+void ViewRenderer::Render(const cv::Mat& raw, const mv::modules::BasicArmorDetector::DebugData& dbg,
+                          const std::vector<mv::Detection>& detections,
+                          const mv::GimbalControl& ctrl, int frame_idx, double fps,
+                          const mv::modules::BasicArmorDetector::Params& params,
+                          const std::string& status, const cv::Rect2i& roi_rect) {
+  const cv::Size FRAME_SIZE = raw.size();
   // ── 选择主视图内容 ────────────────────────────────────────────────────
   cv::Mat display;
   switch (impl_->view) {
     case ViewMode::DIFF: {
-      const cv::Mat FULL_DIFF = MakeFullDiff(dbg);
-      cv::cvtColor(FULL_DIFF.empty() ? (cv::Mat)cv::Mat::zeros(raw.size(), CV_8UC1)
-                                     : FULL_DIFF,
+      const cv::Mat FULL_DIFF = MakeFullMat(dbg.diff, roi_rect, FRAME_SIZE);
+      cv::cvtColor(FULL_DIFF.empty() ? (cv::Mat)cv::Mat::zeros(raw.size(), CV_8UC1) : FULL_DIFF,
                    display, cv::COLOR_GRAY2BGR);
       break;
     }
     case ViewMode::BINARY: {
-      const cv::Mat FULL_BIN = MakeFullBinary(dbg);
-      cv::cvtColor(FULL_BIN.empty() ? (cv::Mat)cv::Mat::zeros(raw.size(), CV_8UC1)
-                                    : FULL_BIN,
+      const cv::Mat FULL_BIN = MakeFullMat(dbg.binary, roi_rect, FRAME_SIZE);
+      cv::cvtColor(FULL_BIN.empty() ? (cv::Mat)cv::Mat::zeros(raw.size(), CV_8UC1) : FULL_BIN,
                    display, cv::COLOR_GRAY2BGR);
       break;
     }
     case ViewMode::LIGHTS:
       // 将 ROI 二值图还原到全图后再送给 PaintLightBarsVis（确保轮廓坐标正确）
-      display = mv::tool::PaintLightBarsVis(MakeFullBinary(dbg), raw, params);
+      display = mv::tool::PaintLightBarsVis(MakeFullMat(dbg.binary, roi_rect, FRAME_SIZE), raw, params);
       break;
+    case ViewMode::ROI: {
+      display = raw.clone();
+      if (roi_rect.area() > 0) {
+        cv::rectangle(display, roi_rect, cv::Scalar(0, 255, 255), 2);
+        cv::putText(display, "ROI", roi_rect.tl() + cv::Point(2, -4),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.50, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);
+      } else {
+        cv::putText(display, "ROI: FULL FRAME", cv::Point(10, 80),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.50, cv::Scalar(80, 80, 255), 1, cv::LINE_AA);
+      }
+      for (const auto& det : detections) {
+        DrawDetection(display, det);
+      }
+      break;
+    }
     default:  // ViewMode::RESULT
       display = raw.clone();
       for (const auto& det : detections) {
@@ -236,7 +232,7 @@ void ViewRenderer::Render(const cv::Mat& raw,
   cv::imshow(impl_->main_win, display);
 
   // ── Debug 窗口：始终显示还原到全图的 binary 图 ────────────────────────
-  const cv::Mat FULL_BIN_FOR_DBG = MakeFullBinary(dbg);
+  const cv::Mat FULL_BIN_FOR_DBG = MakeFullMat(dbg.binary, roi_rect, FRAME_SIZE);
   if (!FULL_BIN_FOR_DBG.empty()) {
     cv::Mat bin_bgr;
     cv::cvtColor(FULL_BIN_FOR_DBG, bin_bgr, cv::COLOR_GRAY2BGR);

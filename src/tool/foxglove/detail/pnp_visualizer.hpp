@@ -9,16 +9,16 @@
  */
 #pragma once
 
+#include "interfaces/types.hpp"
+
 #include <mutex>
-#include <optional>
 #include <vector>
 
 #include <foxglove/channel.hpp>
 #include <foxglove/context.hpp>
 #include <foxglove/schemas.hpp>
 #include <opencv2/core.hpp>
-
-#include "interfaces/types.hpp"
+#include <optional>
 
 namespace mv::tool::detail {
 

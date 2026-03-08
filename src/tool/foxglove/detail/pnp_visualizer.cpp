@@ -9,14 +9,14 @@
  */
 #include "tool/foxglove/detail/pnp_visualizer.hpp"
 
+#include "tool/foxglove/detail/utils.hpp"
+
 #include <cstring>
 #include <sstream>
 
 #include <nlohmann/json.hpp>
 #include <opencv2/imgproc.hpp>
 #include <spdlog/spdlog.h>
-
-#include "tool/foxglove/detail/utils.hpp"
 
 namespace mv::tool::detail {
 
@@ -53,7 +53,7 @@ void PnpVisualizer::EnsureChannels() {
 }
 
 void PnpVisualizer::Publish(const std::vector<mv::Detection>& dets, const cv::Mat& frame,
-                             uint64_t ts_ns) {
+                            uint64_t ts_ns) {
   std::lock_guard<std::mutex> lock(mtx_);
   EnsureChannels();
 
@@ -84,8 +84,7 @@ void PnpVisualizer::Publish(const std::vector<mv::Detection>& dets, const cv::Ma
       // 角点间连线（绿色虚线轮廓）
       for (int k = 0; k < 4; ++k) {
         cv::line(annotated,
-                 cv::Point(static_cast<int>(det.points[k].x),
-                           static_cast<int>(det.points[k].y)),
+                 cv::Point(static_cast<int>(det.points[k].x), static_cast<int>(det.points[k].y)),
                  cv::Point(static_cast<int>(det.points[(k + 1) % 4].x),
                            static_cast<int>(det.points[(k + 1) % 4].y)),
                  cv::Scalar(0, 200, 0), 1);
@@ -98,8 +97,7 @@ void PnpVisualizer::Publish(const std::vector<mv::Detection>& dets, const cv::Ma
                          : "no pnp");
       cv::putText(annotated, text,
                   cv::Point(static_cast<int>(ctr.x) + 5, static_cast<int>(ctr.y) - 10),
-                  cv::FONT_HERSHEY_SIMPLEX, 0.45, cv::Scalar(100, 255, 100), 1,
-                  cv::LINE_AA);
+                  cv::FONT_HERSHEY_SIMPLEX, 0.45, cv::Scalar(100, 255, 100), 1, cv::LINE_AA);
     }
 
     // 发布标注图
@@ -136,14 +134,11 @@ void PnpVisualizer::Publish(const std::vector<mv::Detection>& dets, const cv::Ma
       entity.frame_locked = false;
 
       // X 轴（红色）
-      entity.arrows.push_back(
-          MakeArrow(origin, Eigen::Vector3d::UnitX(), ColorRed(), 0.1));
+      entity.arrows.push_back(MakeArrow(origin, Eigen::Vector3d::UnitX(), ColorRed(), 0.1));
       // Y 轴（绿色）
-      entity.arrows.push_back(
-          MakeArrow(origin, Eigen::Vector3d::UnitY(), ColorGreen(), 0.1));
+      entity.arrows.push_back(MakeArrow(origin, Eigen::Vector3d::UnitY(), ColorGreen(), 0.1));
       // Z 轴（蓝色）
-      entity.arrows.push_back(
-          MakeArrow(origin, Eigen::Vector3d::UnitZ(), ColorBlue(), 0.1));
+      entity.arrows.push_back(MakeArrow(origin, Eigen::Vector3d::UnitZ(), ColorBlue(), 0.1));
 
       scene.entities.push_back(std::move(entity));
     }
@@ -181,8 +176,7 @@ void PnpVisualizer::Publish(const std::vector<mv::Detection>& dets, const cv::Ma
     doc["armors"] = std::move(armors);
 
     std::string json_str = doc.dump();
-    residuals_ch_->log(reinterpret_cast<const std::byte*>(json_str.data()), json_str.size(),
-                        ts_ns);
+    residuals_ch_->log(reinterpret_cast<const std::byte*>(json_str.data()), json_str.size(), ts_ns);
   }
 }
 

@@ -44,6 +44,7 @@ struct DebugSession::Impl {
     key_map['2'] = [this] { renderer.SetView(ViewMode::DIFF); };
     key_map['3'] = [this] { renderer.SetView(ViewMode::BINARY); };
     key_map['4'] = [this] { renderer.SetView(ViewMode::LIGHTS); };
+    key_map['5'] = [this] { renderer.SetView(ViewMode::ROI); };
   }
 };
 
@@ -99,9 +100,9 @@ DebugSession::PollResult DebugSession::Poll() {
 void DebugSession::Feed(const cv::Mat& raw, const mv::modules::BasicArmorDetector::DebugData& dbg,
                         const std::vector<mv::Detection>& detections, const mv::GimbalControl& ctrl,
                         const mv::modules::BasicArmorDetector::Params& params,
-                        const std::string& status) {
+                        const std::string& status, const cv::Rect2i& roi_rect) {
   impl_->renderer.Render(raw, dbg, detections, ctrl, impl_->metrics.TotalFrames(),
-                         impl_->metrics.CurrentFps(), params, status);
+                         impl_->metrics.CurrentFps(), params, status, roi_rect);
 }
 
 void DebugSession::TickFrame(bool has_detection, int det_count) {

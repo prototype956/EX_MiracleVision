@@ -31,10 +31,9 @@
  *   消除上游编译对 OpenCV 内部类型的直接依赖。
  *
  * 【ROI 自适应裁剪】
- *   Detect() 内部维护帧间 ROI 状态机，在首次/恢复全图后，以上帧检测结果的
- *   包围盒（扩展 1.5×宽 / 2×高）作为下帧裁剪区域，可将二值化 / findContours
- *   等耗时操作的像素数量减少 4~8×，显著提升帧率。
- *   连续 5 帧无目标时自动回退全图检测。调用 ResetRoi() 可立即清空 ROI 状态。
+ *   ROI 状态机已迁移至 RoiManager（roi_manager.hpp），BasicArmorDetector
+ *   现在是纯无状态检测器：每次 Detect(frame) 接受任意输入（全图或裁剪片），
+ *   返回相对于该输入的坐标，坐标恢复由调用方（RoiManager）负责。
  */
 #pragma once
 
@@ -72,8 +71,8 @@ class BasicArmorDetector final : public IDetector {
   /** 所有可调参数聚合在此，便于 SetParams/GetParams 原子传递 */
   struct Params {
     int light_thresh{160};  ///< 灰度亮度二值阈值（捕获所有亮像素含白色中心）
-    int green_thresh{30};   ///< 双通道差值阈值（识别彩色边缘；R-B AND R-G 统一用此值）
-    int white_thresh{200};  ///< 预留：灰度硬屏蔽阈值（当前未启用）
+    int green_thresh{30};  ///< 双通道差值阈值（识别彩色边缘；R-B AND R-G 统一用此值）
+    int white_thresh{200};         ///< 预留：灰度硬屏蔽阈值（当前未启用）
     float min_light_ratio{0.07F};  ///< 灯条短/长轴比下界，对应原项目 LIGHT_RATIO_W_H_MAX=15
     float max_light_ratio{0.95F};  ///< 灯条短/长轴比上界，对应原项目 LIGHT_RATIO_W_H_MIN=1
     float max_light_angle{40.0F};  ///< 灯条最大倾斜角（°，0=垂直，90=水平）
@@ -96,20 +95,11 @@ class BasicArmorDetector final : public IDetector {
    */
   struct DebugData {
     cv::Mat diff;    ///< 双通道差值颜色掩码（灰度单通道）
-    cv::Mat binary;  ///< 形态学处理后的二值图    /// 当前帧 ROI 裁剪区域左上角（全图坐标），全零表示未使用 ROI
-    cv::Point2i roi_offset{0, 0};
-    /// 原始帧尺寸（用于将 ROI 二値图还原到全图坐标）
-    cv::Size frame_size{0, 0};  };
+    cv::Mat binary;  ///< 形态学处理后的二值图（相对于传入帧，可能是 ROI 片）
+  };
 
   void EnableDebug(bool enabled) noexcept;
   [[nodiscard]] const DebugData& GetDebugData() const noexcept;
-
-  /**
-   * @brief 立即清空 ROI 状态，下一帧将退回全图检测
-   *
-   * 适用场景：切换目标颜色、检测到跳变/遮挡等需要重置跟踪的情况。
-   */
-  void ResetRoi() noexcept;
 
  private:
   /** Pimpl：所有私有实现细节（数据成员、LightBar、算法辅助函数）在 .cpp 中定义 */

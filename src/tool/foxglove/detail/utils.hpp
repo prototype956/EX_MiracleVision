@@ -8,16 +8,16 @@
  */
 #pragma once
 
+#include "interfaces/types.hpp"
+
 #include <chrono>
 #include <cmath>
 #include <cstdint>
-#include <numbers>
 #include <string>
 
 #include <Eigen/Dense>
 #include <foxglove/schemas.hpp>
-
-#include "interfaces/types.hpp"
+#include <numbers>
 
 namespace mv::tool::detail {
 
@@ -25,10 +25,9 @@ namespace mv::tool::detail {
 
 /** 当前系统时间（纳秒） */
 [[nodiscard]] inline uint64_t NowNs() {
-  return static_cast<uint64_t>(
-      std::chrono::duration_cast<std::chrono::nanoseconds>(
-          std::chrono::system_clock::now().time_since_epoch())
-          .count());
+  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                   std::chrono::system_clock::now().time_since_epoch())
+                                   .count());
 }
 
 /** 解析时间戳：ts_ns <= 0 时使用当前时间 */
@@ -126,9 +125,8 @@ namespace mv::tool::detail {
 // ── Foxglove 基础类型构造 ─────────────────────────────────────────────────────
 
 /** 构造 Pose（position + orientation）*/
-[[nodiscard]] inline foxglove::schemas::Pose MakePose(double px, double py, double pz,
-                                                       double qx, double qy, double qz,
-                                                       double qw) {
+[[nodiscard]] inline foxglove::schemas::Pose MakePose(double px, double py, double pz, double qx,
+                                                      double qy, double qz, double qw) {
   foxglove::schemas::Pose pose;
   pose.position = foxglove::schemas::Vector3{px, py, pz};
   pose.orientation = foxglove::schemas::Quaternion{qx, qy, qz, qw};
@@ -150,9 +148,9 @@ namespace mv::tool::detail {
  * @param length    轴长（m），默认 0.08m
  */
 [[nodiscard]] inline foxglove::schemas::ArrowPrimitive MakeArrow(const Eigen::Vector3d& origin,
-                                                                   const Eigen::Vector3d& dir,
-                                                                   foxglove::schemas::Color color,
-                                                                   double length = 0.08) {
+                                                                 const Eigen::Vector3d& dir,
+                                                                 foxglove::schemas::Color color,
+                                                                 double length = 0.08) {
   // 求将 +X 旋转到 dir 的四元数
   Eigen::Vector3d x_hat = Eigen::Vector3d::UnitX();
   Eigen::Vector3d axis = x_hat.cross(dir);

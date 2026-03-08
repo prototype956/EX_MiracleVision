@@ -27,8 +27,7 @@ namespace mv::modules {
 
 namespace {
 const bool PNP_SOLVER_REGISTERED = [] {
-  ::mv::Factory<::mv::ISolver>::Register("pnp",
-                                         [] { return std::make_unique<PnpSolver>(); });
+  ::mv::Factory<::mv::ISolver>::Register("pnp", [] { return std::make_unique<PnpSolver>(); });
   return true;
 }();
 }  // namespace
@@ -39,9 +38,9 @@ const bool PNP_SOLVER_REGISTERED = [] {
 static std::vector<cv::Point3f> MakeWorldPoints(float half_w, float half_h) {
   return {
       {-half_w, -half_h, 0.0F},  // BL
-      { half_w, -half_h, 0.0F},  // BR
-      { half_w,  half_h, 0.0F},  // TR
-      {-half_w,  half_h, 0.0F},  // TL
+      {half_w, -half_h, 0.0F},   // BR
+      {half_w, half_h, 0.0F},    // TR
+      {-half_w, half_h, 0.0F},   // TL
   };
 }
 
@@ -105,8 +104,7 @@ bool PnpSolver::Init(const YAML::Node& config) {
   }
 
   initialized_ = true;
-  MV_LOG_INFO("PnpSolver",
-              "Init OK — fx={:.1f} fy={:.1f} cx={:.1f} cy={:.1f}",
+  MV_LOG_INFO("PnpSolver", "Init OK — fx={:.1f} fy={:.1f} cx={:.1f} cy={:.1f}",
               camera_matrix_.at<double>(0, 0), camera_matrix_.at<double>(1, 1),
               camera_matrix_.at<double>(0, 2), camera_matrix_.at<double>(1, 2));
   return true;
@@ -121,8 +119,7 @@ bool PnpSolver::Solve(Detection& detection) {
   }
 
   // 选取世界坐标模板
-  const float HALF_W =
-      (detection.type == ArmorType::BIG) ? BIG_HALF_W : SMALL_HALF_W;
+  const float HALF_W = (detection.type == ArmorType::BIG) ? BIG_HALF_W : SMALL_HALF_W;
   const std::vector<cv::Point3f> WORLD_PTS = MakeWorldPoints(HALF_W, HALF_H);
 
   // 组织图像点
@@ -132,8 +129,8 @@ bool PnpSolver::Solve(Detection& detection) {
   cv::Mat tvec;
 
   // IPPE：平面目标解析解，比 ITERATIVE 快且无需初始值
-  const bool SOLVE_OK = cv::solvePnP(WORLD_PTS, img_pts, camera_matrix_, dist_coeffs_,
-                                     rvec, tvec, false, cv::SOLVEPNP_IPPE);
+  const bool SOLVE_OK = cv::solvePnP(WORLD_PTS, img_pts, camera_matrix_, dist_coeffs_, rvec, tvec,
+                                     false, cv::SOLVEPNP_IPPE);
   if (!SOLVE_OK) {
     MV_LOG_DEBUG("PnpSolver", "solvePnP (IPPE) failed for this detection");
     return false;
@@ -143,13 +140,12 @@ bool PnpSolver::Solve(Detection& detection) {
   Eigen::Vector3d xyz_in_camera;
   cv::cv2eigen(tvec, xyz_in_camera);
 
-  const Eigen::Vector3d xyz_in_gimbal =
-      R_camera2gimbal_ * xyz_in_camera + t_camera2gimbal_;
+  const Eigen::Vector3d xyz_in_gimbal = R_camera2gimbal_ * xyz_in_camera + t_camera2gimbal_;
 
   detection.xyz_in_gimbal = xyz_in_gimbal;
 
   // yaw / pitch 从云台坐标系计算
-  detection.yaw_angle   = std::atan2(xyz_in_gimbal.x(), xyz_in_gimbal.z());
+  detection.yaw_angle = std::atan2(xyz_in_gimbal.x(), xyz_in_gimbal.z());
   detection.pitch_angle = std::atan2(-xyz_in_gimbal.y(), xyz_in_gimbal.z());
 
   detection.is_solved = true;
