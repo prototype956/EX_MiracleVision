@@ -1,0 +1,196 @@
+/**
+ * @file foxglove_sink.hpp
+ * @brief Foxglove 可视化调试入口（PImpl 门面）
+ *
+ * 【职责】
+ *   聚合五个子发布器：图像、检测结果、PnP 调试、TF 坐标系、线程健康，
+ *   通过单一 FoxgloveSink 对象向 Foxglove Studio 推送所有调试数据。
+ *
+ * 【PImpl 设计】
+ *   - foxglove SDK 头文件（channel.hpp / schemas.hpp / server.hpp）
+ *     完全隔离在 foxglove_sink.cpp 与 detail/ 各子模块中；
+ *   - 本头文件仅依赖标准库、OpenCV 基础类型、Eigen、nlohmann_json
+ *     和 interfaces/types.hpp，上游目标零 SDK 编译代价。
+ *
+ * 【典型用法】
+ * @code
+ *   mv::tool::FoxgloveSink sink;          // 默认 0.0.0.0:8765
+ *   sink.Start();
+ *
+ *   // 主循环
+ *   sink.PublishImage(frame, "camera/raw");
+ *   sink.PublishDetections(detections);
+ *   sink.PublishPnpResult(detections, frame);
+ *   sink.PublishTransform("world", "gimbal", T_wg, ts_ns);
+ *   sink.PublishThreadMetrics(metrics);
+ *   sink.PublishGimbalControl(ctrl);
+ * @endcode
+ */
+#pragma once
+
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include <Eigen/Dense>
+#include <nlohmann/json.hpp>
+#include <opencv2/core.hpp>
+
+#include "interfaces/types.hpp"
+
+namespace mv::tool {
+
+// ── 前向声明（供 thread_monitor.hpp 使用）────────────────────────────────────
+struct FoxgloveSinkConfig {
+  std::string name = "MiracleVision";  ///< 显示在 Foxglove 中的服务名称
+  std::string host = "0.0.0.0";        ///< 监听地址
+  uint16_t port = 8765;                ///< WebSocket 端口
+};
+
+/**
+ * @brief Foxglove 数据发布入口
+ *
+ * 线程安全性：各 Publish* 方法内部加锁，可从 Pipeline 不同线程并发调用。
+ */
+class FoxgloveSink {
+ public:
+  // 为就地公开 API 和内部子模块使用
+  using Config = FoxgloveSinkConfig;
+
+  // ── 线程健康指标（由 PipelineNode 填充并上报）─────────────────────────
+
+  struct ThreadMetrics {
+    std::string node_name;      ///< 节点名称（"CaptureNode" 等）
+    double fps{0.0};            ///< 当前处理帧率
+    double latency_ms{0.0};     ///< 本节点平均处理延迟（ms）
+    uint64_t drop_count{0};     ///< 累计丢帧数
+    bool is_alive{true};        ///< 线程是否仍在运行
+    std::string error_msg;      ///< 最近一条错误信息（空=无错）
+  };
+
+  // ── 参数双向调节回调 ─────────────────────────────────────────────────────
+
+  /** Foxglove 端修改参数时触发：(参数名, 新值 JSON) → void */
+  using ParameterCallback = std::function<void(const std::string&, const nlohmann::json&)>;
+
+  // ── 生命周期 ──────────────────────────────────────────────────────────────
+
+  FoxgloveSink();                     ///< 使用默认配置（host=0.0.0.0, port=8765）
+  explicit FoxgloveSink(Config cfg);  ///< 使用自定义配置
+  ~FoxgloveSink();
+
+  FoxgloveSink(const FoxgloveSink&) = delete;
+  FoxgloveSink& operator=(const FoxgloveSink&) = delete;
+  FoxgloveSink(FoxgloveSink&&) noexcept;
+  FoxgloveSink& operator=(FoxgloveSink&&) noexcept;
+
+  /** 启动 WebSocket Server，开始接受客户端连接 */
+  void Start();
+  /** 停止 Server，断开所有客户端 */
+  void Stop();
+
+  // ── 图像发布 ──────────────────────────────────────────────────────────────
+
+  /**
+   * @brief 发布图像帧
+   * @param img      OpenCV Mat（BGR8 / MONO8 / 16UC1 自动识别编码）
+   * @param topic    Topic 名称，如 "camera/raw"、"camera/debug"
+   * @param frame_id 坐标系名称（默认 "camera"）
+   * @param ts_ns    时间戳（纳秒，0 = 使用当前时间）
+   */
+  void PublishImage(const cv::Mat& img, const std::string& topic,
+                    const std::string& frame_id = "camera", int64_t ts_ns = 0);
+
+  // ── 检测结果发布 ──────────────────────────────────────────────────────────
+
+  /**
+   * @brief 发布装甲板检测结果
+   *
+   * 同时推送：
+   * - `detections/annotations`（ImageAnnotations）：2D 角点多边形 + 标签
+   * - `detections/3d`（SceneUpdate）：已解算装甲板在云台坐标系中的 3D 立方体
+   *
+   * @param dets     检测结果列表（含未解算和已解算的）
+   * @param ts_ns    时间戳（纳秒，0 = 使用当前时间）
+   */
+  void PublishDetections(const std::vector<mv::Detection>& dets, int64_t ts_ns = 0);
+
+  // ── PnP 专项调试 ──────────────────────────────────────────────────────────
+
+  /**
+   * @brief 发布 PnP 解算调试信息（三层）
+   *
+   * - `pnp/debug_image`（RawImage）：底图 + 原始角点（绿圈）标注
+   * - `pnp/axes_3d`（SceneUpdate）：每个已解算装甲板的 RGB XYZ 坐标轴箭头
+   * - `pnp/residuals`（JSON）：每块装甲板的位姿和深度信息
+   *
+   * @param dets     检测结果（仅 is_solved=true 的会产生 3D 输出）
+   * @param frame    底图（用于 debug_image 绘制）
+   * @param ts_ns    时间戳（纳秒，0 = 使用当前时间）
+   */
+  void PublishPnpResult(const std::vector<mv::Detection>& dets, const cv::Mat& frame,
+                        int64_t ts_ns = 0);
+
+  // ── TF 坐标系 ─────────────────────────────────────────────────────────────
+
+  /**
+   * @brief 发布坐标系变换到 Foxglove /tf topic
+   *
+   * 在 Foxglove 3D 面板中可直观看到各坐标系相对关系。
+   * 建议调用：
+   *   - ("world", "gimbal", T_wg)：每帧从预测器推送
+   *   - ("gimbal", "camera", T_gc)：Init() 时发布一次（固定外参）
+   *
+   * @param parent   父坐标系名称
+   * @param child    子坐标系名称
+   * @param T        4×4 齐次变换矩阵（parent→child）
+   * @param ts_ns    时间戳（纳秒，0 = 使用当前时间）
+   */
+  void PublishTransform(const std::string& parent, const std::string& child,
+                        const Eigen::Matrix4d& T, int64_t ts_ns = 0);
+
+  // ── 线程健康监控 ──────────────────────────────────────────────────────────
+
+  /**
+   * @brief 发布 Pipeline 各节点健康指标
+   *
+   * 推送到 `pipeline/nodes`（JSON），可在 Foxglove 原始 JSON 面板查看。
+   *
+   * 建议由 VisionPipeline 定时（100ms）汇聚各节点的 ThreadMetrics 后调用。
+   *
+   * @param metrics  各节点指标列表
+   * @param ts_ns    时间戳（纳秒，0 = 使用当前时间）
+   */
+  void PublishThreadMetrics(const std::vector<ThreadMetrics>& metrics, int64_t ts_ns = 0);
+
+  // ── 云台控制指令 ──────────────────────────────────────────────────────────
+
+  /**
+   * @brief 发布云台控制量到 `control/gimbal`（JSON）
+   * @param ctrl   云台指令
+   * @param ts_ns  时间戳（纳秒，0 = 使用当前时间）
+   */
+  void PublishGimbalControl(const mv::GimbalControl& ctrl, int64_t ts_ns = 0);
+
+  // ── 参数双向调节 ──────────────────────────────────────────────────────────
+
+  /** 注册参数修改回调（Foxglove 端修改参数时被调用）*/
+  void SetParameterCallback(ParameterCallback cb);
+
+  /**
+   * @brief 向 Foxglove 推送当前参数快照（初始化或值变更时调用）
+   * @param params  JSON 对象，key = 参数名，value = 参数值
+   */
+  void UpdateParameters(const nlohmann::json& params);
+
+  /** 查询本地缓存的参数值（应用层主动拉取）*/
+  [[nodiscard]] nlohmann::json GetParameter(const std::string& name) const;
+
+ private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
+}  // namespace mv::tool

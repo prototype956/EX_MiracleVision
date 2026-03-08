@@ -7,3 +7,9 @@
 #   replay/  ── 未来：回放分析工具（预留）
 
 add_subdirectory(debug)
+
+if(USE_FOXGLOVE_SDK)
+    add_subdirectory(foxglove)
+else()
+    message(STATUS "      ⊗ mv-tool-foxglove skipped (USE_FOXGLOVE_SDK=OFF)")
+endif()
