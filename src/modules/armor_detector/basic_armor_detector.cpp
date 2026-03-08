@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 
 #include <opencv2/imgproc.hpp>
 
@@ -55,6 +56,22 @@ struct BasicArmorDetector::Impl {
     float           width{0.0F};   ///< 短轴（width）
     float           tilt{0.0F};    ///< 相对垂直方向的倾斜角（°，0=垂直，90=水平）
   };
+
+  // ── ROI 状态 ──────────────────────────────────────────────────────────────
+
+  /**
+   * @brief 帧间 ROI 状态：记录上一帧成功区域，用于下帧裁剪
+   *
+   * 策略：
+   *   - 检测成功 → 以所有目标包围盒扩大后作为下一帧 ROI；
+   *   - 连续 kMaxLost 帧失败 → 回退全图。
+   */
+  struct RoiState {
+    cv::Rect2i roi_rect{0, 0, 0, 0};  ///< 全零 = 使用全图
+    int        lost_count{0};         ///< 连续丢帧计数
+    static constexpr int kMaxLost = 5;
+  };
+  RoiState roi_state;
 
   // ── 算法函数 ──────────────────────────────────────────────────────────────
 
@@ -293,26 +310,50 @@ bool BasicArmorDetector::Init(const YAML::Node& config) {
   return true;
 }
 
-std::vector<Detection> BasicArmorDetector::Detect(const cv::Mat& frame, ArmorColor enemy_color) {
+std::vector<Detection> BasicArmorDetector::Detect(const cv::Mat& frame,
+                                                   ArmorColor enemy_color) {
   if (frame.empty()) {
     MV_LOG_WARN("BasicArmorDetector", "Detect() called with empty frame");
     return {};
   }
 
-  // 预处理：生成二值图（三路融合 + 形态学）
-  cv::Mat binary = impl_->MakeBinary(frame, enemy_color);
+  // ── ROI 裁剪：用上一帧目标区域缩小本帧处理范围 ────────────────────────────
+  cv::Point2f    roi_offset{0.0F, 0.0F};
+  const cv::Mat* input_ptr = &frame;
+  cv::Mat        cropped;
 
-  // 提取灯条并按 x 排序
+  const cv::Rect2i& prev_roi = impl_->roi_state.roi_rect;
+  if (prev_roi.area() > 0) {
+    // 安全裁剪：与帧边界取交集，防止越界
+    const cv::Rect2i FRAME_RECT{0, 0, frame.cols, frame.rows};
+    const cv::Rect2i SAFE_ROI = prev_roi & FRAME_RECT;
+    if (SAFE_ROI.area() > 0) {
+      cropped    = frame(SAFE_ROI);
+      input_ptr  = &cropped;
+      roi_offset = {static_cast<float>(SAFE_ROI.x),
+                    static_cast<float>(SAFE_ROI.y)};
+    }
+  }
+
+  // ── 预处理：生成二值图（三路融合 + 形态学）────────────────────────────────
+  cv::Mat binary = impl_->MakeBinary(*input_ptr, enemy_color);
+
+  // ── 提取灯条并按 x 排序 ─────────────────────────────────────────────────
   std::vector<Impl::LightBar> lights = impl_->FindLightBars(binary);
-  std::sort(lights.begin(), lights.end(), [](const Impl::LightBar& lhs, const Impl::LightBar& rhs) {
-    return lhs.rect.center.x < rhs.rect.center.x;
-  });
+  std::sort(lights.begin(), lights.end(),
+            [](const Impl::LightBar& lhs, const Impl::LightBar& rhs) {
+              return lhs.rect.center.x < rhs.rect.center.x;
+            });
 
+  // ── 提取失败：更新 ROI 丢帧状态 ─────────────────────────────────────────
   if (lights.size() < 2) {
+    if (++impl_->roi_state.lost_count >= Impl::RoiState::kMaxLost) {
+      impl_->roi_state = {};
+    }
     return {};
   }
 
-  // 两两配对
+  // ── 两两配对 ────────────────────────────────────────────────────────────
   std::vector<Detection> detections;
   for (std::size_t idx = 0; idx + 1 < lights.size(); ++idx) {
     for (std::size_t jdx = idx + 1; jdx < lights.size(); ++jdx) {
@@ -322,8 +363,55 @@ std::vector<Detection> BasicArmorDetector::Detect(const cv::Mat& frame, ArmorCol
     }
   }
 
-  MV_LOG_DEBUG("BasicArmorDetector", "Frame: {} lights, {} armors",
-               lights.size(), detections.size());
+  // ── 配对失败：更新 ROI 丢帧状态 ─────────────────────────────────────────
+  if (detections.empty()) {
+    if (++impl_->roi_state.lost_count >= Impl::RoiState::kMaxLost) {
+      impl_->roi_state = {};
+    }
+    return {};
+  }
+
+  // ── 坐标恢复：ROI 局部坐标 → 全图坐标 ──────────────────────────────────
+  const cv::Point2f IMG_CTR{640.0F, 512.0F};
+  for (auto& det : detections) {
+    for (auto& pt : det.points) {
+      pt += roi_offset;
+    }
+    det.box.x += roi_offset.x;
+    det.box.y += roi_offset.y;
+    // 重新计算到图像中心的距离（使用已修正的全图坐标）
+    det.distance_to_center =
+        static_cast<double>(cv::norm(det.Center() - IMG_CTR));
+  }
+
+  // ── 更新 ROI：以本帧所有目标包围盒扩展后存入下一帧 ──────────────────────
+  {
+    float min_x = std::numeric_limits<float>::max();
+    float min_y = std::numeric_limits<float>::max();
+    float max_x = std::numeric_limits<float>::lowest();
+    float max_y = std::numeric_limits<float>::lowest();
+    for (const auto& det : detections) {
+      min_x = std::min(min_x, det.box.x);
+      min_y = std::min(min_y, det.box.y);
+      max_x = std::max(max_x, det.box.x + det.box.width);
+      max_y = std::max(max_y, det.box.y + det.box.height);
+    }
+    const float BOX_W    = max_x - min_x;
+    const float BOX_H    = max_y - min_y;
+    // 参考原项目策略：水平扩展 1.5×bbox_w，垂直扩展 2×bbox_h
+    const float EXPAND_X = BOX_W * 1.5F;
+    const float EXPAND_Y = BOX_H * 2.0F;
+    impl_->roi_state.roi_rect = cv::Rect2i{
+        static_cast<int>(min_x - EXPAND_X),
+        static_cast<int>(min_y - EXPAND_Y),
+        static_cast<int>(BOX_W + EXPAND_X * 2.0F),
+        static_cast<int>(BOX_H + EXPAND_Y * 2.0F)};
+    impl_->roi_state.lost_count = 0;
+  }
+
+  MV_LOG_DEBUG("BasicArmorDetector", "Frame: {} lights, {} armors (roi={}x{})",
+               lights.size(), detections.size(),
+               prev_roi.width, prev_roi.height);
   return detections;
 }
 
@@ -349,6 +437,12 @@ void BasicArmorDetector::EnableDebug(bool enabled) noexcept {
 
 const BasicArmorDetector::DebugData& BasicArmorDetector::GetDebugData() const noexcept {
   return impl_->debug_data;
+}
+
+// ── ROI 控制 ──────────────────────────────────────────────────────────────
+
+void BasicArmorDetector::ResetRoi() noexcept {
+  impl_->roi_state = {};
 }
 
 }  // namespace mv::modules

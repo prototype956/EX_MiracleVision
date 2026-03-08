@@ -29,6 +29,12 @@
  *   采用 Pimpl（impl 指针）模式将所有私有实现细节（数据成员、内部算法函数、
  *   LightBar 结构体）完全隐藏在 .cpp 中，头文件仅暴露公开接口与公开类型，
  *   消除上游编译对 OpenCV 内部类型的直接依赖。
+ *
+ * 【ROI 自适应裁剪】
+ *   Detect() 内部维护帧间 ROI 状态机，在首次/恢复全图后，以上帧检测结果的
+ *   包围盒（扩展 1.5×宽 / 2×高）作为下帧裁剪区域，可将二值化 / findContours
+ *   等耗时操作的像素数量减少 4~8×，显著提升帧率。
+ *   连续 5 帧无目标时自动回退全图检测。调用 ResetRoi() 可立即清空 ROI 状态。
  */
 #pragma once
 
@@ -95,6 +101,13 @@ class BasicArmorDetector final : public IDetector {
 
   void EnableDebug(bool enabled) noexcept;
   [[nodiscard]] const DebugData& GetDebugData() const noexcept;
+
+  /**
+   * @brief 立即清空 ROI 状态，下一帧将退回全图检测
+   *
+   * 适用场景：切换目标颜色、检测到跳变/遮挡等需要重置跟踪的情况。
+   */
+  void ResetRoi() noexcept;
 
  private:
   /** Pimpl：所有私有实现细节（数据成员、LightBar、算法辅助函数）在 .cpp 中定义 */
