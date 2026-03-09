@@ -1,13 +1,31 @@
 /**
  * @file foxglove_sink.cpp
- * @brief FoxgloveSink PImpl 实现
+ * @brief FoxgloveSink Pimpl 实现
  *
- * Impl 职责：
- *   - 创建 foxglove::Context 和 WebSocketServer
- *   - 管理参数存储和双向参数回调
- *   - 持有并委托给五个子发布器
+ * 【Pimpl 布局】
+ *   Impl struct 集中管理：
+ *   - foxglove::Context      ：SDK 全局上下文，所有子发布器共享同一实例
+ *   - foxglove::WebSocketServer ：WebSocket 服务端，负责客户端连接 / 断开回调
+ *   - 五个子发布器            ：ImagePublisher / DetectionPublisher /
+ *                              PnpVisualizer / TfPublisher / ThreadMonitor
+ *   - param_store            ：foxglove::Parameter 的 key→value 映射，
+ *                              onGetParameters / onSetParameters 从此读写
  *
- * 子发布器通过与 Impl 共享同一个 foxglove::Context 来发布数据到相同的 Server。
+ * 【Channel 生命周期】
+ *   每个子发布器内部懒创建自己的 Channel（EnsureChannels()），
+ *   首次 Publish() 时才 advertise。例外：PnpVisualizer 在构造时立即注册，
+ *   确保客户端握手后即可看到该话题（详见 pnp_visualizer.cpp）。
+ *
+ * 【零客户端门控】
+ *   PublishImage / PublishPnpResult 在 HasClients()==false 时提前返回，
+ *   避免昂贵的图像 clone + memcpy 拖累 Pipeline 帧率。
+ *   PublishDetections / PublishTransform / PublishThreadMetrics 不门控，
+ *   因为其序列化开销远低于图像编码。
+ *
+ * 【参数双向调节实现】
+ *   onSetParameters 回调加锁更新 param_store 后，释放锁再通知 param_callback，
+ *   防止外部回调（如重载检测器参数）在持锁状态下再次调用 UpdateParameters
+ *   导致死锁。
  */
 #include "tool/foxglove/foxglove_sink.hpp"
 
@@ -124,7 +142,9 @@ struct FoxgloveSink::Impl {
           result.emplace_back(std::move(new_p));
           changed.push_back(name);
         }
-      }  // 锁释放
+      }  // 必须先释放锁，再通知外部回调
+         // 原因：param_callback 可能调用 UpdateParameters() 再次加 param_mutex，
+         // 持锁时通知会导致递归死锁。
 
       // 锁外通知，防止死锁
       if (param_callback) {
@@ -150,7 +170,8 @@ struct FoxgloveSink::Impl {
     // 5a. 客户端连接：计数 +1，推送已存储参数快照
     options.callbacks.onClientConnect = [this]() {
       const int n = client_count.fetch_add(1, std::memory_order_relaxed) + 1;
-      spdlog::info("[FoxgloveSink] Client connected (total: {}). Publishing parameter snapshot...", n);
+      spdlog::info("[FoxgloveSink] Client connected (total: {}). Publishing parameter snapshot...",
+                   n);
       std::vector<foxglove::Parameter> snapshot;
       {
         std::lock_guard<std::mutex> lock(param_mutex);
@@ -198,6 +219,9 @@ FoxgloveSink::FoxgloveSink(FoxgloveSink&&) noexcept = default;
 FoxgloveSink& FoxgloveSink::operator=(FoxgloveSink&&) noexcept = default;
 
 void FoxgloveSink::Start() {
+  // Server 在 Impl 构造时已通过 WebSocketServer::create() 建立并绑定端口，
+  // Start() 只负责将 is_running 标志置位，供 Stop() 判断是否需要 server->stop()。
+  // 如需明确启动监听，可在此调用 server->start()（取决于 foxglove SDK 版本）。
   if (impl_->server && !impl_->is_running) {
     impl_->is_running = true;
     spdlog::info("[FoxgloveSink] WebSocket server started on {}:{}", "port",
@@ -221,8 +245,10 @@ bool FoxgloveSink::HasClients() const noexcept {
 
 void FoxgloveSink::PublishImage(const cv::Mat& img, const std::string& topic,
                                 const std::string& frame_id, int64_t ts_ns) {
-  // 零客户端时跳过昂贵的图像编码，避免拖累 Pipeline 帧率
-  if (!impl_->HasClients()) return;
+  // 零客户端时提前返回：图像 clone + memcpy(~1.5MB/帧) 会占用约 2ms，
+  // 在 120fps Pipeline 中累积为不可忽略的延迟，无接收方时完全没有意义。
+  if (!impl_->HasClients())
+    return;
   impl_->image_pub->Publish(img, topic, frame_id, detail::ResolveTs(ts_ns));
 }
 
@@ -237,7 +263,8 @@ void FoxgloveSink::PublishDetections(const std::vector<mv::Detection>& dets, int
 void FoxgloveSink::PublishPnpResult(const std::vector<mv::Detection>& dets, const cv::Mat& frame,
                                     int64_t ts_ns) {
   // 零客户端时跳过调试图像绘制和编码
-  if (!impl_->HasClients()) return;
+  if (!impl_->HasClients())
+    return;
   impl_->pnp_viz->Publish(dets, frame, detail::ResolveTs(ts_ns));
 }
 
@@ -261,9 +288,16 @@ void FoxgloveSink::PublishGimbalControl(const mv::GimbalControl& ctrl, int64_t t
 
   std::lock_guard<std::mutex> lock(impl_->ctrl_mtx);
 
-  // 懒创建 channel
+  // 懒创建 channel（带 JSON Schema，供 Foxglove 正确识别数据类型）
   if (!impl_->ctrl_ch.has_value()) {
-    auto res = foxglove::RawChannel::create("control/gimbal", "json", std::nullopt, impl_->ctx);
+    static const std::string SCHEMA_STR =
+        R"({"type":"object","properties":{"timestamp_ns":{"type":"integer"},"yaw_rad":{"type":"number"},"pitch_rad":{"type":"number"},"distance_m":{"type":"number"},"fire":{"type":"boolean"},"tracking":{"type":"boolean"}}})";
+    foxglove::Schema schema;
+    schema.name = "GimbalControl";
+    schema.encoding = "jsonschema";
+    schema.data = reinterpret_cast<const std::byte*>(SCHEMA_STR.data());
+    schema.data_len = SCHEMA_STR.size();
+    auto res = foxglove::RawChannel::create("control/gimbal", "json", schema, impl_->ctx);
     if (res.has_value()) {
       impl_->ctrl_ch.emplace(std::move(res.value()));
     } else {

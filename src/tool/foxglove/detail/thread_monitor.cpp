@@ -28,7 +28,14 @@ ThreadMonitor::ThreadMonitor(foxglove::Context ctx) : ctx_(std::move(ctx)) {}
 
 void ThreadMonitor::EnsureChannel() {
   if (!channel_.has_value()) {
-    auto res = foxglove::RawChannel::create("pipeline/nodes", "json", std::nullopt, ctx_);
+    static const std::string SCHEMA_STR =
+        R"({"type":"object","properties":{"timestamp_ns":{"type":"integer"},"nodes":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"fps":{"type":"number"},"latency_ms":{"type":"number"},"drop":{"type":"integer"},"alive":{"type":"boolean"},"warn":{"type":"string"},"error":{"type":"string"}}}}}})";
+    foxglove::Schema schema;
+    schema.name = "PipelineNodes";
+    schema.encoding = "jsonschema";
+    schema.data = reinterpret_cast<const std::byte*>(SCHEMA_STR.data());
+    schema.data_len = SCHEMA_STR.size();
+    auto res = foxglove::RawChannel::create("pipeline/nodes", "json", schema, ctx_);
     if (res.has_value()) {
       channel_.emplace(std::move(res.value()));
     } else {

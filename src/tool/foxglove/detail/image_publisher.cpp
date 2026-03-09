@@ -1,6 +1,23 @@
 /**
  * @file image_publisher.cpp
- * @brief ImagePublisher 实现
+ * @brief ImagePublisher 实现（Mat → foxglove RawImage）
+ *
+ * 【关键实现细节】
+ *
+ *   1. 懒创建 Channel
+ *      foxglove::schemas::RawImageChannel::create() 会向 WebSocket Server
+ *      advertise 该 topic，只应在第一次实际使用时调用，避免向客户端发送
+ *      无意义的空频道。GetOrCreateChannel() 在 Publish() 持锁后执行。
+ *
+ *   2. 图像数据拷贝
+ *      foxglove RawImage.data 是 std::vector<std::byte>，必须 memcpy。
+ *      若 img 不连续（ROI 子矩阵），img.step 与 img.cols*elemSize() 不等，
+ *      此处直接使用 img.step 和 img.total()*elemSize()，Foxglove 解码时
+ *      会按 step 字段正确处理行跨度，无需预先 clone 到连续缓冲区。
+ *
+ *   3. 编码字符串
+ *      由 DetectEncoding() 从 Mat::type() 推断，未知类型回退到 "bgr8"。
+ *      回退值在大多数情况下可正常显示，但颜色可能不准确。
  */
 #include "tool/foxglove/detail/image_publisher.hpp"
 
