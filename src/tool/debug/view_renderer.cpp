@@ -1,6 +1,20 @@
 /**
  * @file view_renderer.cpp
- * @brief ViewRenderer 实现
+ * @brief ViewRenderer 实现（Pimpl 模式）
+ *
+ * 【模块职责说明】
+ *   - 匿名 namespace 中的辅助函数（DrawDetection / DrawHUD /
+ *     DrawDebugOverlay / MakeFullMat）均为纯函数、无状态，仅本文件可见；
+ *   - Impl struct 极简：仅持窗口名和当前视图枚举，无图像缓存，
+ *     每帧 Render() 完整重新生成显示内容，不保留帧间状态；
+ *   - Debug 窗口始终显示还原到全图尺寸的 binary 图 + 当前参数单行摘要，
+ *     独立于主窗口的视图模式，便于同时观察二值化效果与最终检测结果。
+ *
+ * 【ROI 局部图还原（MakeFullMat）】
+ *   当 roi_rect.area() > 0 时，BasicArmorDetector::DebugData 中的
+ *   binary / diff 均为 ROI 裁剪片段（尺寸 < 全图）。
+ *   MakeFullMat() 将其粘贴回全图尺寸的零背景 Mat，确保 DIFF / BINARY /
+ *   LIGHTS 视图与原始帧尺寸一致，不发生坐标错位或显示缩放问题。
  */
 #include "tool/debug/view_renderer.hpp"
 
@@ -202,17 +216,18 @@ void ViewRenderer::Render(const cv::Mat& raw, const mv::modules::BasicArmorDetec
     }
     case ViewMode::LIGHTS:
       // 将 ROI 二值图还原到全图后再送给 PaintLightBarsVis（确保轮廓坐标正确）
-      display = mv::tool::PaintLightBarsVis(MakeFullMat(dbg.binary, roi_rect, FRAME_SIZE), raw, params);
+      display =
+          mv::tool::PaintLightBarsVis(MakeFullMat(dbg.binary, roi_rect, FRAME_SIZE), raw, params);
       break;
     case ViewMode::ROI: {
       display = raw.clone();
       if (roi_rect.area() > 0) {
         cv::rectangle(display, roi_rect, cv::Scalar(0, 255, 255), 2);
-        cv::putText(display, "ROI", roi_rect.tl() + cv::Point(2, -4),
-                    cv::FONT_HERSHEY_SIMPLEX, 0.50, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);
+        cv::putText(display, "ROI", roi_rect.tl() + cv::Point(2, -4), cv::FONT_HERSHEY_SIMPLEX,
+                    0.50, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);
       } else {
-        cv::putText(display, "ROI: FULL FRAME", cv::Point(10, 80),
-                    cv::FONT_HERSHEY_SIMPLEX, 0.50, cv::Scalar(80, 80, 255), 1, cv::LINE_AA);
+        cv::putText(display, "ROI: FULL FRAME", cv::Point(10, 80), cv::FONT_HERSHEY_SIMPLEX, 0.50,
+                    cv::Scalar(80, 80, 255), 1, cv::LINE_AA);
       }
       for (const auto& det : detections) {
         DrawDetection(display, det);

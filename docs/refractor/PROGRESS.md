@@ -374,3 +374,112 @@ mv-tool-foxglove  ✓ 零警告零错误
 | `src/modules/simple_predictor/` | 无 EKF，无飞行时间延迟补偿，仅直通当前帧角度 | 中（阶段性）|
 | `src/fsm/vision_fsm.cpp` | `ENERGY_BUFF` 状态逻辑未接入上行 `mode` 字段 | 低 |
 | `base/` `devices/` `module/` | 旧代码目录未清理，待新模块验证稳定后删除 | 低 |
+
+---
+
+## Stage 8：EKF 预测器 + 开火决策模块 ✅
+
+> 最后更新：Stage 8-E 完成（8-F 阻塞中）
+> 参考来源：`sp_vision_25/tasks/auto_aim/` + `EX_MiracleVision/module/predictor/`
+
+本阶段实现完整的 EKF 自瞄预测与开火决策能力，替换 SimplePredictor / SimpleVoter，完成后可参与正式比赛。
+
+### 子阶段规划
+
+| 子阶段 | 内容 | 状态 |
+|--------|------|------|
+| **8-A** | EKF 工具层（`src/tool/ekf/`）| ✅ 完成 |
+| **8-B** | EkfPredictor 内部件（`detail/` 三类）| ✅ 完成 |
+| **8-C** | EkfPredictor 外壳 + Voter 框架 | ✅ 完成 |
+| **8-D** | `Predict()` / `Track()` 核心算法填充 | ✅ 完成 |
+| **8-E** | CooldownVoter + MpcVoter 算法填充 | ✅ 完成 |
+| **8-F** | 串口 IMU 字段接入（待下位机确认协议）| ⬜ 阻塞中 |
+
+---
+
+### 交付物（Stage 8-A / 8-B / 8-C 框架层，当前完成）
+
+#### EKF 工具层
+
+| 文件 | 说明 |
+|------|------|
+| `src/tool/ekf/extended_kalman_filter.hpp` | 通用 EKF 模板：线性/非线性 Predict & Update，NIS 滑动窗口，可注入 `x_add` 角度取模 |
+| `src/tool/ekf/extended_kalman_filter.cpp` | 占位实现（TODO Stage 8-A）|
+| `src/tool/ekf/CMakeLists.txt` | `mv-tool-ekf` 静态库，`PUBLIC Eigen3::Eigen` |
+
+#### 坐标系扩展（SharedState + IPredictor）
+
+| 文件 | 变更 | 说明 |
+|------|------|------|
+| `src/pipeline/shared_state.hpp` | 🆕 新增 | 提取 `SharedState`（原在 `pipeline.hpp` 内联），增加 `shared_mutex + Quaterniond gimbal_quat`，提供 `SetGimbalQuat()` / `GetGimbalQuat()` 线程安全接口 |
+| `src/pipeline/pipeline.hpp` | 修改 | `#include "shared_state.hpp"`，`Build()` 向 PredictNode / SerialNode 传递 `SharedState&` |
+| `src/pipeline/predict_node.hpp/.cpp` | 修改 | 构造函数改为 `SharedState&`；`WorkLoop` 每帧调用 `predictor_->SetGimbalOrientation(state_.GetGimbalQuat())` |
+| `src/pipeline/serial_node.hpp/.cpp` | 修改 | 构造函数改为 `SharedState&`；`TryRecv()` 新增 TODO(Stage 8-F) IMU 四元数解析占位块 |
+| `src/interfaces/i_predictor.hpp` | 修改 | 增加 `virtual void SetGimbalOrientation(const Quaterniond& q)` 默认空操作；`SimplePredictor` 无需改动 |
+
+#### EkfPredictor 内部件（detail/）
+
+| 文件 | 说明 |
+|------|------|
+| `src/modules/ekf_predictor/detail/ekf_track_target.hpp/.cpp` | 11 维 EKF 单目标包装：`Predict(dt)` / `Update(detection)` / `ArmorXyzaList()` / `Diverged()` / `Converged()`；内含 `ArmorXyz(x, id)` 观测函数与解析 Jacobian |
+| `src/modules/ekf_predictor/detail/ekf_tracker.hpp/.cpp` | 四状态机（LOST / DETECTING / TRACKING / TEMP_LOST）；`EkfTrackerParams` 含全部可调参数；`Track(detections, t, color)` → `optional<EkfTrackTarget>` |
+| `src/modules/ekf_predictor/detail/trajectory_solver.hpp/.cpp` | 迭代飞行时间弹道补偿；`TrajectorySolverParams`；`Solve(target, ts, bullet_speed)` → `GimbalControl`；`ChooseAimPoint()` 选近端板 |
+
+#### EkfPredictor 外壳 + 决策层
+
+| 文件 | 说明 |
+|------|------|
+| `src/modules/ekf_predictor/ekf_predictor.hpp/.cpp` | Pimpl 外壳，工厂键 `"ekf"`；Override `Init()` / `Predict()` / `SetGimbalOrientation()` / `GetTrackTarget()` / `Reset()` |
+| `src/modules/cooldown_voter/cooldown_voter.hpp/.cpp` | 三层防护投票器（最小锁定帧 + 对准误差阈值 + 冷却宽容帧），工厂键 `"cooldown"` |
+| `src/modules/mpc_voter/mpc_voter.hpp/.cpp` | TinyMPC 投票器，工厂键 `"mpc"`；`Vote()` 通过 MpcPlanner 规划 1s 轨迹，判断 0.5s 处误差 |
+| `src/modules/mpc_voter/detail/mpc_planner.hpp/.cpp` | 封装双轴 TinySolver；`MpcPlannerParams`；`Plan(x0, ref) → MpcResult{fire, planned_yaw, planned_pitch}` |
+| `3rdparty/tinympc/` | 从 sp_vision_25 复制并适配 CMakeLists.txt → `mv-3rdparty-tinympc` |
+
+### CMake 变更
+
+| 文件 | 变更 |
+|------|------|
+| `src/tool/CMakeLists.txt` | 新增 `add_subdirectory(ekf)` |
+| `src/modules/CMakeLists.txt` | 新增 `mv-mod-ekf-predictor` / `mv-mod-cooldown-voter` / `mv-mod-mpc-voter` 三个静态库目标 |
+| `cmake/ThirdParty.cmake` | 新增 TinyMPC 配置块，条件 `add_subdirectory(3rdparty/tinympc)` |
+
+### EKF 状态向量（11 维，世界系）
+
+```
+x = [cx, ẋ, cy, ẏ, cz, ż, α, α̇, r, Δl, Δh]
+    ╰──────────╴目标中心 3D 位置+速度（世界系）
+                               ╰─────╴旋转角+角速度
+                                          ╰─╴底盘半径
+                                              ╰────╴双半径差/高度差（4 板车扩展）
+```
+
+### 观测函数 h(x, armor_id)
+
+```
+设板 i 的角度：φᵢ = α + i·(2π/N)
+obs_x = cx + r·cos(φᵢ)
+obs_y = cy + r·sin(φᵢ)
+obs_z = cz + Δh·(i % 2)   （4 板车高低板补偿）
+obs_α = φᵢ
+```
+
+### 关键设计决策
+
+- **世界系 EKF**：检测输入在喂入 EKF 前先用 `R_gimbal2world = q.toRotationMatrix()` 变换，目标中心的线速度建模在世界系下近似匀速，旋转轴竖直，角速度恒定。
+- **SharedState IMU 四元数分离**：`PredictNode` 每帧从 `SharedState` 读取最新四元数 → `SetGimbalOrientation(q)` → EkfPredictor 内部更新 `R_gimbal2world`，与串口解析线程通过 `shared_mutex` 隔离。
+- **三种投票器**：`SimpleVoter`（调试）→ `CooldownVoter`（正式保守）→ `MpcVoter`（最优），通过工厂键 YAML 切换，Pipeline 零改动。
+- **TinyMPC 2×2 双轴独立**：yaw 和 pitch 各用一个 `[θ, θ̇]` 状态、`[θ̈]` 输入的线性系统，加速度约束 `±max_acc`，代价矩阵对角，求解速度 < 1ms。
+
+### 编译状态
+
+```
+Stage 8-A 至 8-E 全部完成，零 warning，零 error
+cmake --build build -- -j$(nproc) → [100%] Built target mv-vision-main
+剩余 8-F（串口 IMU 四元数解析）阻塞中，等待下位机协议确认
+```
+
+### 待完成（Stage 8 剩余）
+
+| 任务 | 子阶段 | 优先级 |
+|------|--------|--------|
+| `SerialNode::TryRecv()` IMU 四元数解析 | 8-F | 阻塞（依赖下位机协议确认）|

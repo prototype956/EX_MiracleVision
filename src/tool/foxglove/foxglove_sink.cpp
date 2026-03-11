@@ -4,36 +4,35 @@
  *
  * 【Pimpl 布局】
  *   Impl struct 集中管理：
- *   - foxglove::Context      ：SDK 全局上下文，所有子发布器共享同一实例
- *   - foxglove::WebSocketServer ：WebSocket 服务端，负责客户端连接 / 断开回调
- *   - 五个子发布器            ：ImagePublisher / DetectionPublisher /
- *                              PnpVisualizer / TfPublisher / ThreadMonitor
- *   - param_store            ：foxglove::Parameter 的 key→value 映射，
- *                              onGetParameters / onSetParameters 从此读写
+ *   - foxglove::Context        ：SDK 全局上下文，所有子发布器共享同一实例
+ *   - foxglove::WebSocketServer ：WebSocket 服务端，由 detail::BuildServerOptions 构建
+ *   - 七个子发布器              ：ImagePublisher / DetectionPublisher / PnpVisualizer /
+ *                                TfPublisher / ThreadMonitor / GimbalPublisher /
+ *                                TrackingVisualizer
+ *   - param_store               ：foxglove::Parameter key→value 映射
  *
  * 【Channel 生命周期】
  *   每个子发布器内部懒创建自己的 Channel（EnsureChannels()），
- *   首次 Publish() 时才 advertise。例外：PnpVisualizer 在构造时立即注册，
- *   确保客户端握手后即可看到该话题（详见 pnp_visualizer.cpp）。
+ *   首次 Publish() 时才 advertise。
  *
  * 【零客户端门控】
  *   PublishImage / PublishPnpResult 在 HasClients()==false 时提前返回，
  *   避免昂贵的图像 clone + memcpy 拖累 Pipeline 帧率。
- *   PublishDetections / PublishTransform / PublishThreadMetrics 不门控，
- *   因为其序列化开销远低于图像编码。
  *
  * 【参数双向调节实现】
- *   onSetParameters 回调加锁更新 param_store 后，释放锁再通知 param_callback，
- *   防止外部回调（如重载检测器参数）在持锁状态下再次调用 UpdateParameters
- *   导致死锁。
+ *   回调组装逻辑已封装到 detail/server_builder.hpp，
+ *   onSetParameters 释放锁后再通知 param_callback，防止递归死锁。
  */
 #include "tool/foxglove/foxglove_sink.hpp"
 
 #include "tool/foxglove/detail/detection_publisher.hpp"
+#include "tool/foxglove/detail/gimbal_publisher.hpp"
 #include "tool/foxglove/detail/image_publisher.hpp"
 #include "tool/foxglove/detail/pnp_visualizer.hpp"
+#include "tool/foxglove/detail/server_builder.hpp"
 #include "tool/foxglove/detail/tf_publisher.hpp"
 #include "tool/foxglove/detail/thread_monitor.hpp"
+#include "tool/foxglove/detail/tracking_visualizer.hpp"
 #include "tool/foxglove/detail/utils.hpp"
 
 #include <atomic>
@@ -70,23 +69,23 @@ struct FoxgloveSink::Impl {
   std::unique_ptr<detail::PnpVisualizer> pnp_viz;
   std::unique_ptr<detail::TfPublisher> tf_pub;
   std::unique_ptr<detail::ThreadMonitor> thread_monitor;
+  std::unique_ptr<detail::GimbalPublisher> gimbal_pub;
+  std::unique_ptr<detail::TrackingVisualizer> tracking_viz;
 
-  // ── 云台控制（JSON channel）──────────────────────────────────────────────
-  std::optional<foxglove::RawChannel> ctrl_ch;
-  std::mutex ctrl_mtx;
+  // ── 通用 JSON channels（PublishJson 懒创建）─────────────────────────────
+  std::unordered_map<std::string, foxglove::RawChannel> json_chs;
+  std::mutex json_chs_mtx;
 
   // ── 连接状态 ──────────────────────────────────────────────────────────────
-  /// 当前活跃客户端数量（原子计数，供零客户端时跳过图像编码）
   std::atomic<int> client_count{0};
 
-  /// 是否有至少一个客户端连接（无锁快速查询）
   [[nodiscard]] bool HasClients() const noexcept {
     return client_count.load(std::memory_order_relaxed) > 0;
   }
 
   // ── 参数双向调节 ─────────────────────────────────────────────────────────
   std::unordered_map<std::string, foxglove::Parameter> param_store;
-  std::mutex param_mutex;
+  mutable std::mutex param_mutex;
   ParameterCallback param_callback;
 
   // ── 构造 ─────────────────────────────────────────────────────────────────
@@ -94,103 +93,16 @@ struct FoxgloveSink::Impl {
     foxglove::setLogLevel(foxglove::LogLevel::Info);
     ctx = foxglove::Context::create();
 
-    // --- WebSocket Server 选项 ---
-    foxglove::WebSocketServerOptions options;
-    options.context = ctx;
-    options.name = cfg.name;
-    options.host = cfg.host;
-    options.port = cfg.port;
-    options.capabilities = foxglove::WebSocketServerCapabilities::ClientPublish |
-                           foxglove::WebSocketServerCapabilities::Parameters;
-    options.supported_encodings = {"json", "protobuf"};
-
-    // 1. 获取参数（Client → Server）
-    options.callbacks.onGetParameters =
-        [this](uint32_t /*client_id*/, std::optional<std::string_view> /*req_id*/,
-               const std::vector<std::string_view>& names) -> std::vector<foxglove::Parameter> {
-      std::lock_guard<std::mutex> lock(param_mutex);
-      std::vector<foxglove::Parameter> result;
-      if (names.empty()) {
-        for (const auto& [k, v] : param_store) {
-          result.push_back(v.clone());
-        }
-      } else {
-        for (const auto& sv : names) {
-          std::string name(sv);
-          if (auto it = param_store.find(name); it != param_store.end()) {
-            result.push_back(it->second.clone());
-          }
-        }
-      }
-      return result;
+    // Server 回调组装（细节隔离在 detail/server_builder.hpp）
+    detail::ServerCallbackArgs cb_args{
+        .client_count = client_count,
+        .param_store = param_store,
+        .param_mutex = param_mutex,
+        .param_callback = param_callback,
+        .server = server,
     };
+    auto options = detail::BuildServerOptions(cfg, ctx, std::move(cb_args));
 
-    // 2. 设置参数（Client → Server）
-    options.callbacks.onSetParameters = [this](uint32_t /*client_id*/,
-                                               std::optional<std::string_view> /*req_id*/,
-                                               const std::vector<foxglove::ParameterView>& params)
-        -> std::vector<foxglove::Parameter> {
-      std::vector<foxglove::Parameter> result;
-      std::vector<std::string> changed;
-
-      {
-        std::lock_guard<std::mutex> lock(param_mutex);
-        for (const auto& p : params) {
-          std::string name(p.name());
-          auto new_p = p.clone();
-          param_store.insert_or_assign(name, new_p.clone());
-          result.emplace_back(std::move(new_p));
-          changed.push_back(name);
-        }
-      }  // 必须先释放锁，再通知外部回调
-         // 原因：param_callback 可能调用 UpdateParameters() 再次加 param_mutex，
-         // 持锁时通知会导致递归死锁。
-
-      // 锁外通知，防止死锁
-      if (param_callback) {
-        for (const auto& name : changed) {
-          param_callback(name, nlohmann::json::object());
-        }
-      }
-      return result;
-    };
-
-    // 3. 参数订阅/取消订阅（占位）
-    options.callbacks.onParametersSubscribe = [](const std::vector<std::string_view>&) {};
-    options.callbacks.onParametersUnsubscribe = [](const std::vector<std::string_view>&) {};
-
-    // 4. 订阅/取消订阅 channel 日志
-    options.callbacks.onSubscribe = [](uint64_t ch_id, const foxglove::ClientMetadata& c) {
-      spdlog::debug("[FoxgloveSink] Client {} subscribed to channel {}", c.id, ch_id);
-    };
-    options.callbacks.onUnsubscribe = [](uint64_t ch_id, const foxglove::ClientMetadata& c) {
-      spdlog::debug("[FoxgloveSink] Client {} unsubscribed from channel {}", c.id, ch_id);
-    };
-
-    // 5a. 客户端连接：计数 +1，推送已存储参数快照
-    options.callbacks.onClientConnect = [this]() {
-      const int n = client_count.fetch_add(1, std::memory_order_relaxed) + 1;
-      spdlog::info("[FoxgloveSink] Client connected (total: {}). Publishing parameter snapshot...",
-                   n);
-      std::vector<foxglove::Parameter> snapshot;
-      {
-        std::lock_guard<std::mutex> lock(param_mutex);
-        for (const auto& [k, v] : param_store) {
-          snapshot.push_back(v.clone());
-        }
-      }
-      if (!snapshot.empty() && server) {
-        server->publishParameterValues(std::move(snapshot));
-      }
-    };
-
-    // 5b. 客户端断开：计数 -1
-    options.callbacks.onClientDisconnect = [this]() {
-      const int n = client_count.fetch_sub(1, std::memory_order_relaxed) - 1;
-      spdlog::info("[FoxgloveSink] Client disconnected (remaining: {})", n);
-    };
-
-    // 创建 Server
     auto server_res = foxglove::WebSocketServer::create(std::move(options));
     if (!server_res.has_value()) {
       spdlog::error("[FoxgloveSink] Failed to create WebSocket server: {}",
@@ -199,12 +111,14 @@ struct FoxgloveSink::Impl {
     }
     server = std::make_unique<foxglove::WebSocketServer>(std::move(server_res.value()));
 
-    // 初始化子发布器（共享同一 Context）
+    // 初始化七个子发布器（共享同一 Context）
     image_pub = std::make_unique<detail::ImagePublisher>(ctx);
     detection_pub = std::make_unique<detail::DetectionPublisher>(ctx);
     pnp_viz = std::make_unique<detail::PnpVisualizer>(ctx);
     tf_pub = std::make_unique<detail::TfPublisher>(ctx);
     thread_monitor = std::make_unique<detail::ThreadMonitor>(ctx);
+    gimbal_pub = std::make_unique<detail::GimbalPublisher>(ctx);
+    tracking_viz = std::make_unique<detail::TrackingVisualizer>(ctx);
   }
 };
 
@@ -219,13 +133,9 @@ FoxgloveSink::FoxgloveSink(FoxgloveSink&&) noexcept = default;
 FoxgloveSink& FoxgloveSink::operator=(FoxgloveSink&&) noexcept = default;
 
 void FoxgloveSink::Start() {
-  // Server 在 Impl 构造时已通过 WebSocketServer::create() 建立并绑定端口，
-  // Start() 只负责将 is_running 标志置位，供 Stop() 判断是否需要 server->stop()。
-  // 如需明确启动监听，可在此调用 server->start()（取决于 foxglove SDK 版本）。
   if (impl_->server && !impl_->is_running) {
     impl_->is_running = true;
-    spdlog::info("[FoxgloveSink] WebSocket server started on {}:{}", "port",
-                 impl_->server != nullptr ? "8765" : "?");
+    spdlog::info("[FoxgloveSink] WebSocket server started on port {}", 8765);
   }
 }
 
@@ -284,39 +194,7 @@ void FoxgloveSink::PublishThreadMetrics(const std::vector<ThreadMetrics>& metric
 // ── 云台控制指令 ──────────────────────────────────────────────────────────────
 
 void FoxgloveSink::PublishGimbalControl(const mv::GimbalControl& ctrl, int64_t ts_ns) {
-  uint64_t ts = detail::ResolveTs(ts_ns);
-
-  std::lock_guard<std::mutex> lock(impl_->ctrl_mtx);
-
-  // 懒创建 channel（带 JSON Schema，供 Foxglove 正确识别数据类型）
-  if (!impl_->ctrl_ch.has_value()) {
-    static const std::string SCHEMA_STR =
-        R"({"type":"object","properties":{"timestamp_ns":{"type":"integer"},"yaw_rad":{"type":"number"},"pitch_rad":{"type":"number"},"distance_m":{"type":"number"},"fire":{"type":"boolean"},"tracking":{"type":"boolean"}}})";
-    foxglove::Schema schema;
-    schema.name = "GimbalControl";
-    schema.encoding = "jsonschema";
-    schema.data = reinterpret_cast<const std::byte*>(SCHEMA_STR.data());
-    schema.data_len = SCHEMA_STR.size();
-    auto res = foxglove::RawChannel::create("control/gimbal", "json", schema, impl_->ctx);
-    if (res.has_value()) {
-      impl_->ctrl_ch.emplace(std::move(res.value()));
-    } else {
-      spdlog::error("[FoxgloveSink] Failed to create control/gimbal channel: {}",
-                    foxglove::strerror(res.error()));
-      return;
-    }
-  }
-
-  nlohmann::json msg;
-  msg["timestamp_ns"] = ts;
-  msg["yaw_rad"] = ctrl.yaw;
-  msg["pitch_rad"] = ctrl.pitch;
-  msg["distance_m"] = ctrl.distance;
-  msg["fire"] = ctrl.fire;
-  msg["tracking"] = ctrl.tracking;
-
-  std::string json_str = msg.dump();
-  impl_->ctrl_ch->log(reinterpret_cast<const std::byte*>(json_str.data()), json_str.size(), ts);
+  impl_->gimbal_pub->Publish(ctrl, detail::ResolveTs(ts_ns));
 }
 
 // ── 参数双向调节 ──────────────────────────────────────────────────────────────
@@ -383,6 +261,36 @@ nlohmann::json FoxgloveSink::GetParameter(const std::string& name) const {
   if (p.is<std::vector<int64_t>>())
     return p.get<std::vector<int64_t>>();
   return nullptr;
+}
+
+// ── 通用 JSON 发布 ────────────────────────────────────────────────────────────
+
+void FoxgloveSink::PublishJson(const std::string& topic, const nlohmann::json& data,
+                               int64_t ts_ns) {
+  const uint64_t ts = detail::ResolveTs(ts_ns);
+  std::lock_guard<std::mutex> lock(impl_->json_chs_mtx);
+
+  if (impl_->json_chs.find(topic) == impl_->json_chs.end()) {
+    auto res = foxglove::RawChannel::create(topic, "json", {}, impl_->ctx);
+    if (!res.has_value()) {
+      spdlog::warn("[FoxgloveSink] PublishJson: failed to create channel '{}': {}", topic,
+                   foxglove::strerror(res.error()));
+      return;
+    }
+    impl_->json_chs.emplace(topic, std::move(res.value()));
+  }
+
+  const std::string json_str = data.dump();
+  impl_->json_chs.at(topic).log(reinterpret_cast<const std::byte*>(json_str.data()),
+                                json_str.size(), ts);
+}
+
+// ── 预测跟踪 3D 可视化 ────────────────────────────────────────────────────────
+
+void FoxgloveSink::PublishTrackingVisuals(const mv::TrackTarget& target,
+                                          const Eigen::Vector3d& aim_xyz,
+                                          const std::string& frame_id, int64_t ts_ns) {
+  impl_->tracking_viz->Publish(target, aim_xyz, frame_id, detail::ResolveTs(ts_ns));
 }
 
 }  // namespace mv::tool

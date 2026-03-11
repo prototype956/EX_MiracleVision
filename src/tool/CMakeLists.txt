@@ -7,7 +7,7 @@
 #   replay/  ── 未来：回放分析工具（预留）
 
 add_subdirectory(debug)
-
+add_subdirectory(ekf)
 if(USE_FOXGLOVE_SDK)
     add_subdirectory(foxglove)
 else()

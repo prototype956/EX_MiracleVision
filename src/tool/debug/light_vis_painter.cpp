@@ -1,6 +1,19 @@
 /**
  * @file light_vis_painter.cpp
  * @brief PaintLightBarsVis 实现
+ *
+ * 【为什么在这里重跑 findContours？】
+ *   BasicArmorDetector::Detect() 不对外暴露灯条中间列表（属于 Impl 私有）。
+ *   为保证颜色编码与检测器实际过滤结果一一对应，此处对同一张 binary 图
+ *   重跑 findContours + minAreaRect / fitEllipse，以相同阈值判定过滤原因：
+ *     绿色 —— ratio ✓ && angle ✓（通过所有过滤）
+ *     橙色 —— ratio ✗（宽高比不符）
+ *     紫色 —— angle ✗（角度超限）
+ *
+ * 【有意的轻微重复】
+ *   过滤判据代码与 BasicArmorDetector::Impl::FindLightBars() 有意镜像，
+ *   将可视化工具与检测器内部实现彻底解耦：修改检测器不会破坏可视化，
+ *   修改可视化也不会影响检测逻辑，符合单一职责原则。
  */
 #include "tool/debug/light_vis_painter.hpp"
 

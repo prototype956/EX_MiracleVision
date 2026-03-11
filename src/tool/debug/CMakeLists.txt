@@ -10,6 +10,7 @@ add_library(mv-tool-debug STATIC
     view_renderer.cpp
     debug_session.cpp
     light_vis_painter.cpp
+    predict_param_manager.cpp
 )
 
 target_include_directories(mv-tool-debug
@@ -22,8 +23,10 @@ target_link_libraries(mv-tool-debug
         mv-core
         mv-mod-armor-detector    # DebugData / Params 类型来源
         ${OpenCV_LIBS}
+        Eigen3::Eigen
+        nlohmann_json::nlohmann_json
     PRIVATE
         yaml-cpp
 )
 
-message(STATUS "      + mv-tool-debug (debug session / param tuner / view renderer)")
+message(STATUS "      + mv-tool-debug (debug session / param tuner / view renderer / predict param manager)")

@@ -64,6 +64,7 @@
 #include "packet.hpp"
 #include "predict_node.hpp"
 #include "serial_node.hpp"
+#include "shared_state.hpp"
 
 #include <atomic>
 #include <memory>
@@ -88,10 +89,8 @@ class VisionPipeline {
    * 由 SerialNode 写入，由 DetectNode / PredictNode 读取。
    * 使用 std::atomic 保证无锁读写，不需要 mutex。
    */
-  struct SharedState {
-    /** 敌方颜色（SerialNode 从上行帧解析后更新，初始 RED） */
-    std::atomic<ArmorColor> enemy_color{ArmorColor::RED};
-  };
+  // SharedState 定义已提取到 shared_state.hpp，此处使用类型别名便于代码可读性
+  using SharedState = mv::pipeline::SharedState;
 
   // ── 构造 / 析构 ───────────────────────────────────────────────────────────
 
@@ -307,10 +306,10 @@ inline std::unique_ptr<VisionPipeline> VisionPipeline::Builder::Build() {
 
   pipeline->predict_node_ =
       std::make_unique<PredictNode>(std::move(predictor_), std::move(voter_), pipeline->detect_ch_,
-                                    pipeline->control_ch_, pipeline->state_.enemy_color);
+                                    pipeline->control_ch_, pipeline->state_);
 
-  pipeline->serial_node_ = std::make_unique<SerialNode>(
-      std::move(serial_), std::move(shooter_), pipeline->control_ch_, pipeline->state_.enemy_color);
+  pipeline->serial_node_ = std::make_unique<SerialNode>(std::move(serial_), std::move(shooter_),
+                                                        pipeline->control_ch_, pipeline->state_);
 
   return pipeline;
 }

@@ -128,11 +128,16 @@ class RoiManager {
   [[nodiscard]] bool IsActive() const noexcept { return state_.roi_rect.area() > 0; }
 
  private:
+  /// 连续失败帧上限：超过此帧数无目标后自动回退全图
   static constexpr int kMaxLost = 5;
 
+  /**
+   * 内部状态块，封装为小类以支持高效重置（Reset() 只需 state_ = {} 即可）。
+   * roi_rect.area() == 0 表示当前处于全图模式。
+   */
   struct State {
-    cv::Rect2i roi_rect{0, 0, 0, 0};
-    int lost_count{0};
+    cv::Rect2i roi_rect{0, 0, 0, 0};  ///< 当前历史 ROI，{0,0,0,0} 表示使用全图
+    int lost_count{0};                ///< 连续未检测到目标的帧数
   };
   State state_{};
 };

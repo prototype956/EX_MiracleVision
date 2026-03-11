@@ -28,6 +28,7 @@
 #include <chrono>
 #include <vector>
 
+#include <Eigen/Geometry>
 #include <yaml-cpp/yaml.h>
 
 namespace mv {
@@ -67,6 +68,24 @@ class IPredictor {
   [[nodiscard]] virtual GimbalControl Predict(const std::vector<Detection>& detections,
                                               std::chrono::steady_clock::time_point timestamp,
                                               ArmorColor enemy_color) = 0;
+
+  /**
+   * @brief 注入当前云台姿态四元数（在 Predict() 之前调用）
+   *
+   * PredictNode 在每帧 Predict() 前从 SharedState 读取四元数并调用此方法。
+   * 默认实现为空操作，SimplePredictor 无需覆写；
+   * EkfPredictor 覆写后将四元数缓存为 R_gimbal2world，在内部转换坐标系。
+   *
+   * 为什么是默认空操作而非纯虚函数？
+   *   - 不强制所有实现处理云台姿态（SimplePredictor 等简单实现不需要它）；
+   *   - 接口向后兼容：将来新增需要云台姿态的实现只需覆写此方法即可。
+   *
+   * @param q  云台-生磁仿鸡对齐系到 IMU 绝对系的旋转
+   *            （详见 docs/refractor/tf/COORDINATE_SYSTEM.md）
+   */
+  virtual void SetGimbalOrientation(const Eigen::Quaterniond& q) {
+    (void)q;  // 默认空操作，SimplePredictor 不需要覆写
+  }
 
   /**
    * @brief 获取当前跟踪目标的详细状态

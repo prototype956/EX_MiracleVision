@@ -65,3 +65,33 @@ if(USE_FOXGLOVE_SDK)
 else()
     message(STATUS "      ⊗ mv-foxglove-vision-test skipped (USE_FOXGLOVE_SDK=OFF)")
 endif()
+
+# ── 预测 + 决策模块 Foxglove 调试测试 ─────────────────────────────────────────
+if(USE_FOXGLOVE_SDK)
+    add_executable(mv-predict-voter-test predict_voter_test.cpp)
+
+    target_link_libraries(mv-predict-voter-test
+        PRIVATE
+            mv-tool-foxglove
+            mv-tool-debug
+            mv-mod-armor-detector
+            mv-mod-pnp-solver
+            mv-mod-ekf-predictor
+            mv-mod-cooldown-voter
+            mv-hal-camera
+            foxglove_sdk
+    )
+
+    target_link_directories(mv-predict-voter-test
+        PRIVATE
+            ${CMAKE_SOURCE_DIR}/3rdparty/foxglove/lib
+    )
+
+    target_compile_definitions(mv-predict-voter-test PRIVATE
+        CONFIG_FILE_PATH="${CONFIG_FILE_PATH}"
+    )
+
+    message(STATUS "      + mv-predict-voter-test (EKF predictor + CooldownVoter foxglove test)")
+else()
+    message(STATUS "      ⊗ mv-predict-voter-test skipped (USE_FOXGLOVE_SDK=OFF)")
+endif()

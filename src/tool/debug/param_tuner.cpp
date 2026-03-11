@@ -1,6 +1,17 @@
 /**
  * @file param_tuner.cpp
- * @brief ParamTuner 实现
+ * @brief ParamTuner 实现（Pimpl 模式）
+ *
+ * 【为什么用 std::deque<ParamEntry> 而不是 std::vector？】
+ *   cv::createTrackbar() 要求传入一个整数变量的稳定地址作为 Trackbar 绑定值。
+ *   std::vector 在 push_back 时可能触发 realloc，使已有元素地址失效，
+ *   导致 Trackbar 读写行为未定义（写入旧地址 = 野写）。
+ *   std::deque 的 push_back 不移动已有元素，地址永远有效，是唯一安全选择。
+ *
+ * 【SaveTo 合并策略】
+ *   写回时先加载目标 YAML 文件（若存在），只更新 [section] 子节点的值，
+ *   其余节点（camera / serial / calibration 等）保持原样不覆盖，
+ *   与原始配置文件独立共存。父目录不存在时自动创建。
  */
 #include "tool/debug/param_tuner.hpp"
 
@@ -42,9 +53,10 @@ void ParamTuner::AttachToWindow(const std::string& win_name) {
 
 void ParamTuner::AddParam(ParamDesc desc) {
   if (impl_->win_name.empty()) {
+    // AttachToWindow 未调用时立即抛出，避免 createTrackbar 使用空窗口名导致 OpenCV 报错
     throw std::logic_error("ParamTuner::AddParam called before AttachToWindow");
   }
-  // push_back 先追加，再取最后一个元素的地址（deque 稳定）
+  // push_back 先追加，再取最后一个元素的地址（deque 不重新分配，地址永远稳定）
   impl_->entries.push_back({std::move(desc), 0});
   auto& entry = impl_->entries.back();
   entry.tb_val = entry.desc.init_val;

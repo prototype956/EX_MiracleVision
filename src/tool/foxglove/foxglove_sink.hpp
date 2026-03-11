@@ -189,6 +189,39 @@ class FoxgloveSink {
    */
   void PublishGimbalControl(const mv::GimbalControl& ctrl, int64_t ts_ns = 0);
 
+  // ── 调试 / 预测跟踪专项 ───────────────────────────────────────────────────
+
+  /**
+   * @brief 发布任意 JSON 数据到指定 Topic（首次调用时懒创建 Channel）
+   *
+   * 适用于调试面板中的数值展示，如 tracking/state、voter/decision。
+   * Foxglove Studio 中使用 "Raw Message" 面板订阅即可查看。
+   *
+   * @param topic   Topic 名称
+   * @param data    nlohmann::json 对象（含任意嵌套结构）
+   * @param ts_ns   时间戳（纳秒，0 = 使用当前时间）
+   */
+  void PublishJson(const std::string& topic, const nlohmann::json& data, int64_t ts_ns = 0);
+
+  /**
+   * @brief 发布预测跟踪三层 3D 可视化
+   *
+   * 同时推送三个 SceneUpdate Topic：
+   *   - tracking/armor_positions : 所有装甲板预测位置（主板=黄球，侧板=橙球）
+   *   - tracking/rotation_center : 旋转中心（蓝球）+ 速度方向箭头（绿）
+   *   - tracking/aim_point       : 弹道求解最终瞄准点（绿球）
+   *
+   * 无跟踪时（target.is_tracking == false）推送空实体，清除上一帧残影。
+   *
+   * @param target    IPredictor::GetTrackTarget() 输出（armor_positions 已由
+   *                  EkfPredictor 填充；SimplePredictor 时该字段为空）
+   * @param aim_xyz   最终瞄准点坐标（世界坐标系，m）
+   * @param frame_id  坐标系名称（默认 "world"）
+   * @param ts_ns     时间戳（纳秒，0 = 使用当前时间）
+   */
+  void PublishTrackingVisuals(const mv::TrackTarget& target, const Eigen::Vector3d& aim_xyz,
+                              const std::string& frame_id = "world", int64_t ts_ns = 0);
+
   // ── 参数双向调节 ──────────────────────────────────────────────────────────
 
   /** 注册参数修改回调（Foxglove 端修改参数时被调用）*/

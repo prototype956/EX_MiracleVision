@@ -40,6 +40,24 @@
 
 namespace mv::modules {
 
+/**
+ * @brief 基于 IPPE 解析解的装甲板位姿解算器
+ *
+ * 实现 ISolver 接口，工厂键为 `"pnp"`。
+ *
+ * 【与旧版 basic_pnp 的区别】
+ *   旧版 basic_pnp 使用 SOLVEPNP_ITERATIVE（LM 迭代），有初始值依赖，
+ *   在无历史信息时收敛至错误最小值的概率较高。
+ *   本实现改用 SOLVEPNP_IPPE（解析解）+ solvePnPGeneric 双解选优：
+ *   1. IPPE 速度约为 LM 的 3~5 倍，精度在平面目标上相当；
+ *   2. solvePnPGeneric 同时返回两个数学解，选优策略三级：
+ *      Level 1 Z>0（目标必须在相机正前方）> Level 2 最小重投影误差 >
+ *      Level 3 时序锁定（近距离误差接近时优先选与上一帧距离更近的解）。
+ *
+ * 【线程安全】
+ *   Init() 和 Solve() 应由同一线程顺序调用。
+ *   多个 PnpSolver 实例彼此独立，各自持有独立的内参/外参/时序状态。
+ */
 class PnpSolver final : public ISolver {
  public:
   PnpSolver();
@@ -50,10 +68,43 @@ class PnpSolver final : public ISolver {
   PnpSolver(PnpSolver&&) = delete;
   PnpSolver& operator=(PnpSolver&&) = delete;
 
+  /**
+   * @brief 加载相机内参与相机→云台外参
+   *
+   * @param config  来自 vision.yaml 的 calibration 节点，字段参见文件顶部 @code 块
+   * @return true   内参解析成功，对象进入就绪状态
+   * @return false  缺少 calibration 节点或 camera_matrix 维度错误，
+   *               错误原因已通过日志输出，对象保持未初始化状态
+   *
+   * @note 外参（R_camera_to_gimbal / t_camera_to_gimbal）可选：
+   *       不提供时自动回退为 Y 轴翻转简化外参，与旧版行为兼容。
+   */
   bool Init(const YAML::Node& config) override;
 
+  /**
+   * @brief 对单块装甲板执行 PnP 解算，就地填写位姿字段
+   *
+   * 读取 detection.points（4 个图像角点）和 detection.type（决定世界坐标模板尺寸），
+   * 调用 solvePnPGeneric(IPPE) 获取最多两个解，按三级策略选优后写入：
+   *   - detection.xyz_in_gimbal    云台坐标系三维位置（m）
+   *   - detection.yaw_angle        水平角（rad，顺时针为正）
+   *   - detection.pitch_angle      俯仰角（rad，向下为正）
+   *   - detection.reprojected_points  主解重投影角点（4 点）
+   *   - detection.reproj_error     主解重投影均方根误差（px）
+   *   - detection.has_alt_solution  是否存在第二候选解
+   *   - detection.xyz_in_gimbal_alt / reprojected_points_alt / reproj_error_alt
+   *
+   * @param detection  输入/输出，需预先填好 points / type
+   * @return true      解算成功，detection.is_solved 被置为 true
+   * @return false     解算失败（Init() 未调用，或 solvePnPGeneric 返回 0 个解）
+   */
   bool Solve(Detection& detection) override;
 
+  /**
+   * @brief 是否已完成 Init() 初始化
+   *
+   * 在 Solve() 调用前可用此方法检查对象是否就绪，避免未初始化时调用产生错误日志。
+   */
   [[nodiscard]] bool IsInitialized() const noexcept override { return initialized_; }
 
  private:
@@ -74,6 +125,17 @@ class PnpSolver final : public ISolver {
   static constexpr float SMALL_HALF_W = 0.0675F;
   static constexpr float BIG_HALF_W = 0.115F;
   static constexpr float HALF_H = 0.0275F;
+
+  // ── 时序锁定（Temporal Continuity）──────────────────────────────────────
+  // 近距离时 IPPE 两解的重投影误差非常接近，单帧比较容易翻解。
+  // 记录上一帧最终选定解在相机坐标系下的 tvec，用空间距离作为第二判据：
+  //   两解都满足 Z>0 且重投影误差差距 < kReprErrHysteresis 时，
+  //   优先选空间上离上一帧更近的解，阻止无谓翻转。
+  cv::Mat last_tvec_;  ///< 上一帧选定解的 tvec（空则表示无历史记录）
+  /// 重投影误差差距阈值（px）：差距 < 此值则启用时序锁定
+  static constexpr double kReprErrHysteresis = 2.0;
+  /// 位置跳变上限：两帧间距超过此值（m）则认为目标切换，重置历史
+  static constexpr double kMaxFrameJump = 1.0;
 
   bool initialized_{false};
 };

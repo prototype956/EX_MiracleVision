@@ -40,6 +40,7 @@
 #include "interfaces/i_shooter.hpp"
 #include "node.hpp"
 #include "packet.hpp"
+#include "shared_state.hpp"
 
 #include <atomic>
 #include <memory>
@@ -52,11 +53,15 @@ class SerialNode final : public PipelineNode {
    * @param serial       串口实例（已 Open()）
    * @param shooter      发射器（已 Init()，负责弹道补偿 + 帧打包）
    * @param input_ch     输入通道（ControlPacket）
-   * @param enemy_color  共享原子变量，更新后 DetectNode/PredictNode 自动使用
+   * @param state        共享状态（写入 enemy_color + gimbal_quat）
    * @param max_send_fail  连续发送失败超过此次数触发 error_code_
+   *
+   * 使用 SharedState& 而非单独的 enemy_color：
+   *   SerialNode 需要同时写入颜色和 IMU 四元数，两者封装在同一个引用中传入，
+   *   避免未来扩展上行数据类型时修改构造参数列表。
    */
   SerialNode(std::unique_ptr<hal::ISerial> serial, std::unique_ptr<IShooter> shooter,
-             std::shared_ptr<Channel<ControlPacket>> input_ch, std::atomic<ArmorColor>& enemy_color,
+             std::shared_ptr<Channel<ControlPacket>> input_ch, SharedState& state,
              int max_send_fail = 30);
 
   ~SerialNode() override = default;
@@ -77,7 +82,7 @@ class SerialNode final : public PipelineNode {
   std::unique_ptr<hal::ISerial> serial_;
   std::unique_ptr<IShooter> shooter_;
   std::shared_ptr<Channel<ControlPacket>> input_ch_;
-  std::atomic<ArmorColor>& enemy_color_;
+  SharedState& state_;  ///< Pipeline 共享状态（enemy_color 和 gimbal_quat 均写入此）
   int max_send_fail_;
 };
 

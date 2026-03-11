@@ -26,6 +26,7 @@
 #include <chrono>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include <Eigen/Dense>
 #include <opencv2/core.hpp>
@@ -99,6 +100,31 @@ struct Detection {
   /** 像素距离到图像中心，用于优先级排序 */
   double distance_to_center{0.0};
 
+  // ── PnP 解算质量（ISolver 填充）──────────────────────────────────────────
+
+  /**
+   * PnP 重投影角点（图像像素坐标，顺序与 points 对应）
+   * 仅 is_solved=true 时有效，用于可视化 PnP 质量
+   */
+  std::array<cv::Point2f, 4> reprojected_points{};
+
+  /**
+   * RMS 重投影误差（像素），越小说明 PnP 解算质量越好
+   * 仅 is_solved=true 时有效
+   */
+  double reproj_error{0.0};
+
+  // ── IPPE 第二候选解（供可视化识别歧义；是否可靠看 reproj_error_alt 对比）─────
+
+  /** IPPE 是否返回了第二个解（平面目标必然有两个解，只是质量不同） */
+  bool has_alt_solution{false};
+  /** 第二解的重投影角点（橙色可视化） */
+  std::array<cv::Point2f, 4> reprojected_points_alt{};
+  /** 第二解在云台坐标系下的 3D 位置 */
+  Eigen::Vector3d xyz_in_gimbal_alt{Eigen::Vector3d::Zero()};
+  /** 第二解的 RMS 重投影误差（像素） */
+  double reproj_error_alt{0.0};
+
   // ── 辅助方法 ─────────────────────────────────────────────────────────────
 
   /** @return 四个角点的中心点（图像坐标） */
@@ -149,12 +175,21 @@ struct TrackTarget {
   ArmorNumber number{ArmorNumber::UNKNOWN};
   ArmorColor color{ArmorColor::UNKNOWN};
 
-  Eigen::Vector3d position{Eigen::Vector3d::Zero()};  // 世界/云台坐标系（m）
-  Eigen::Vector3d velocity{Eigen::Vector3d::Zero()};  // 速度（m/s）
+  Eigen::Vector3d position{Eigen::Vector3d::Zero()};  // 旋转中心（世界坐标系，m）
+  Eigen::Vector3d velocity{Eigen::Vector3d::Zero()};  // 旋转中心速度（m/s）
   double yaw_predicted{0.0};                          // 预测 yaw（rad）
   double pitch_predicted{0.0};                        // 预测 pitch（rad）
 
   std::string tracker_state{"lost"};  // 跟踪器内部状态名
+
+  /**
+   * @brief EKF 估计的所有装甲板空间位置（仅 EkfPredictor 填充）
+   *
+   * 每个元素为 [x, y, z, yaw]（4 维，世界坐标系，单位 m/rad），
+   * 顺序对应装甲板 id 0, 1, 2, ...（由 EkfTrackTarget::ArmorXyzaList() 产生）。
+   * SimplePredictor 不填充此字段，使用前应检查 is_empty()。
+   */
+  std::vector<Eigen::Vector4d> armor_positions{};
 };
 
 }  // namespace mv

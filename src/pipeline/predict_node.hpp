@@ -33,8 +33,8 @@
 #include "interfaces/i_voter.hpp"
 #include "node.hpp"
 #include "packet.hpp"
+#include "shared_state.hpp"
 
-#include <atomic>
 #include <memory>
 
 namespace mv::pipeline {
@@ -46,12 +46,15 @@ class PredictNode final : public PipelineNode {
    * @param voter       投票器（已 Init()，控制 fire 决策）
    * @param input_ch    输入通道（DetectPacket）
    * @param output_ch   输出通道（ControlPacket）
-   * @param enemy_color 共享原子变量，由 SerialNode 更新
+   * @param state       Pipeline 共享状态（enemy_color + gimbal_quat）
+   *
+   * 使用 SharedState& 而非单独传 enemy_color：
+   *   EkfPredictor 同时需要 gimbal_quat，将两者封装在同一个引用中传入，
+   *   避免未来扩展时再改构造函数参数列表。
    */
   PredictNode(std::unique_ptr<IPredictor> predictor, std::unique_ptr<IVoter> voter,
               std::shared_ptr<Channel<DetectPacket>> input_ch,
-              std::shared_ptr<Channel<ControlPacket>> output_ch,
-              std::atomic<ArmorColor>& enemy_color);
+              std::shared_ptr<Channel<ControlPacket>> output_ch, SharedState& state);
 
   ~PredictNode() override = default;
 
@@ -69,7 +72,7 @@ class PredictNode final : public PipelineNode {
   std::unique_ptr<IVoter> voter_;
   std::shared_ptr<Channel<DetectPacket>> input_ch_;
   std::shared_ptr<Channel<ControlPacket>> output_ch_;
-  std::atomic<ArmorColor>& enemy_color_;
+  SharedState& state_;  ///< Pipeline 共享状态（enemy_color + gimbal_quat均从此取得）
 };
 
 }  // namespace mv::pipeline

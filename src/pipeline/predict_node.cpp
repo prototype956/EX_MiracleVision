@@ -13,14 +13,13 @@ static constexpr auto POP_TIMEOUT = std::chrono::milliseconds{10};
 
 PredictNode::PredictNode(std::unique_ptr<IPredictor> predictor, std::unique_ptr<IVoter> voter,
                          std::shared_ptr<Channel<DetectPacket>> input_ch,
-                         std::shared_ptr<Channel<ControlPacket>> output_ch,
-                         std::atomic<ArmorColor>& enemy_color)
+                         std::shared_ptr<Channel<ControlPacket>> output_ch, SharedState& state)
     : PipelineNode("PredictNode"),
       predictor_(std::move(predictor)),
       voter_(std::move(voter)),
       input_ch_(std::move(input_ch)),
       output_ch_(std::move(output_ch)),
-      enemy_color_(enemy_color) {}
+      state_(state) {}
 
 void PredictNode::OnStop() {
   if (input_ch_) {
@@ -40,7 +39,11 @@ void PredictNode::WorkLoop() {
       continue;
     }
 
-    const ArmorColor COLOR = enemy_color_.load();
+    const ArmorColor COLOR = state_.enemy_color.load();
+
+    // ── 注入云台姿态（IMU 四元数 → EKF 坐标系变换）──────────────────────
+    // EkfPredictor 每帧读取最新四元数，SimplePredictor 的默认实现为空操作。
+    predictor_->SetGimbalOrientation(state_.GetGimbalQuat());
 
     // ── 预测（EKF 跟踪 + 云台角度输出）──────────────────────────────────
     GimbalControl control = predictor_->Predict(det_pkt.detections, det_pkt.timestamp, COLOR);

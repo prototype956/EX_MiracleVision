@@ -71,6 +71,56 @@ target_link_libraries(mv-mod-simple-voter
 )
 message(STATUS "    [modules] mv-mod-simple-voter (SimpleVoter)")
 
+# ── EKF 预测器 ───────────────────────────────────────────────────────────────
+add_library(mv-mod-ekf-predictor STATIC
+    ekf_predictor/ekf_predictor.cpp
+    ekf_predictor/detail/ekf_track_target.cpp
+    ekf_predictor/detail/ekf_tracker.cpp
+    ekf_predictor/detail/trajectory_solver.cpp
+)
+target_include_directories(mv-mod-ekf-predictor
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
+)
+target_link_libraries(mv-mod-ekf-predictor
+    PUBLIC
+        mv-interfaces
+        mv-core
+        mv-tool-ekf
+        Eigen3::Eigen
+)
+message(STATUS "    [modules] mv-mod-ekf-predictor (EkfPredictor)")
+
+# ── 冷却窗口开火投票器 ───────────────────────────────────────────────────────
+add_library(mv-mod-cooldown-voter STATIC
+    cooldown_voter/cooldown_voter.cpp
+)
+target_include_directories(mv-mod-cooldown-voter
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
+)
+target_link_libraries(mv-mod-cooldown-voter
+    PUBLIC
+        mv-interfaces
+        mv-core
+)
+message(STATUS "    [modules] mv-mod-cooldown-voter (CooldownVoter)")
+
+# ── TinyMPC 开火投票器 ───────────────────────────────────────────────────────
+add_library(mv-mod-mpc-voter STATIC
+    mpc_voter/mpc_voter.cpp
+    mpc_voter/detail/mpc_planner.cpp
+)
+target_include_directories(mv-mod-mpc-voter
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
+)
+target_link_libraries(mv-mod-mpc-voter
+    PUBLIC
+        mv-interfaces
+        mv-core
+        mv-3rdparty-tinympc
+        Eigen3::Eigen
+)
+message(STATUS "    [modules] mv-mod-mpc-voter (MpcVoter)")
+
 # ── RM 协议发射器 ────────────────────────────────────────────────────────────
 add_library(mv-mod-rm-shooter STATIC
     rm_shooter/rm_shooter.cpp

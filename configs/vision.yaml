@@ -31,6 +31,7 @@ auto_aim:
 
   tracker:
     min_detect_count: 5
+    max_detecting_lost_count: 2   # DETECTING阶段允许最多几帧漏检再回LOST（防止偶发漏帧打断积累）
     max_temp_lost_count: 15
     outpost_max_temp_lost_count: 75
 

@@ -1,11 +1,11 @@
 detector:
   light_thresh: 109
-  green_thresh: 35
+  green_thresh: 81
   white_thresh: 255
   max_light_angle: 90
-  min_armor_ratio: 4.1999998092651367
+  min_armor_ratio: 0
   max_armor_ratio: 5.5
   max_angle_diff: 87.800003051757812
   max_light_ratio: 1
-  min_light_ratio: 0.17000000178813934
+  min_light_ratio: 0
   min_area: 10

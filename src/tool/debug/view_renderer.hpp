@@ -84,8 +84,7 @@ class ViewRenderer {
   void Render(const cv::Mat& raw, const mv::modules::BasicArmorDetector::DebugData& dbg,
               const std::vector<mv::Detection>& detections, const mv::GimbalControl& ctrl,
               int frame_idx, double fps, const mv::modules::BasicArmorDetector::Params& params,
-              const std::string& status = "",
-              const cv::Rect2i& roi_rect = {});
+              const std::string& status = "", const cv::Rect2i& roi_rect = {});
 
  private:
   struct Impl;

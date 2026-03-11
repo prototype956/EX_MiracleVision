@@ -244,32 +244,36 @@ class TerminalHUD {
 
   // ── ANSI 颜色辅助（颜色开关统一受 cfg_.use_color 控制）────────────────────
 
+  /// 在字符串两端包裹 ANSI 转义：\033[{code}m ... \033[0m
+  /// 若 cfg_.use_color == false（非 TTY / 管道）则直接返回原始字符串，不写入途中控制字符
   std::string Esc(const char* code, const std::string& s) const {
     if (!cfg_.use_color) return s;
     return std::string("\033[") + code + "m" + s + "\033[0m";
   }
-  std::string Green(const std::string& s) const  { return Esc("32",   s); }
-  std::string Yellow(const std::string& s) const { return Esc("33",   s); }
-  std::string Red(const std::string& s) const    { return Esc("31",   s); }
-  std::string Gray(const std::string& s) const   { return Esc("90",   s); }
-  std::string Bold(const std::string& s) const   { return Esc("1",    s); }
+  std::string Green(const std::string& s) const  { return Esc("32",   s); }  ///< 绿色（正常 / 通过）
+  std::string Yellow(const std::string& s) const { return Esc("33",   s); }  ///< 黄色（警告 / 低帧率）
+  std::string Red(const std::string& s) const    { return Esc("31",   s); }  ///< 红色（错误 / 极低帧率 / FIRE）
+  std::string Gray(const std::string& s) const   { return Esc("90",   s); }  ///< 灰色（无数据 / 无关信息）
+  std::string Bold(const std::string& s) const   { return Esc("1",    s); }  ///< 加粗（樇题标签 [MV] / [THR]）
 
   // ── 格式化辅助 ────────────────────────────────────────────────────────────
 
-  /// 定点小数格式化，总宽度 width，小数位 prec
+  /// 定点小数格式化：总宽度 width 列，小数保留 prec 位，到 char[32] 缓冲区再转 string
+  /// 避免使用 std::to_string（无宽度控制）或 std::ostringstream（频繁分配）
   static std::string FmtFixed(double v, int width, int prec) {
     char buf[32];
     std::snprintf(buf, sizeof(buf), "%*.*f", width, prec, v);
     return buf;
   }
 
-  /// 左侧空格填充到指定宽度
+  /// 左侧空格填充到指定宽度（已达宽度则原样返回）——用于 FPS 数字对齐
   static std::string PadLeft(const std::string& s, int w) {
     if (static_cast<int>(s.size()) >= w) return s;
     return std::string(static_cast<std::size_t>(w) - s.size(), ' ') + s;
   }
 
-  /// "CaptureNode" → "Capture"，"DetectNode" → "Detect"，其他原样返回
+  /// 从节点名中去除 "Node" 后缀以缩短显示：
+  /// "CaptureNode" → "Capture"，"DetectNode" → "Detect"，无后缀则原样返回
   static std::string ShortName(const std::string& name) {
     const auto pos = name.rfind("Node");
     return (pos != std::string::npos) ? name.substr(0, pos) : name;

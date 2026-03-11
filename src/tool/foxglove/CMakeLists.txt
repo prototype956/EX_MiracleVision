@@ -16,6 +16,8 @@ add_library(mv-tool-foxglove STATIC
     detail/pnp_visualizer.cpp
     detail/tf_publisher.cpp
     detail/thread_monitor.cpp
+    detail/gimbal_publisher.cpp
+    detail/tracking_visualizer.cpp
     ${FOXGLOVE_CPP_WRAPPERS}   # Foxglove C++ 包装器（channel / server / schemas 等）
 )
 
@@ -37,4 +39,4 @@ target_link_libraries(mv-tool-foxglove
         spdlog::spdlog
 )
 
-message(STATUS "      + mv-tool-foxglove (foxglove sink / image / detection / pnp / tf / thread monitor)")
+message(STATUS "      + mv-tool-foxglove (foxglove sink / image / detection / pnp / tf / thread monitor / gimbal / tracking)")
