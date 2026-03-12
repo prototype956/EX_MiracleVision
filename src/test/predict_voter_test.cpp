@@ -265,6 +265,21 @@ int main(int argc, char** argv) {
 
     mv::tool::FoxgloveSinkConfig fox_cfg;
     fox_cfg.port = cli.foxglove_port;
+    // ── Foxglove 图像发布优化：JPEG 压缩 + 分辨率缩放 ────────────────────────
+    // JPEG 质量 50 + 480×270 可将每帧数据从 ~2.7MB 降至 ~5KB（约 540 倍）。
+    // 真正的帧率瓶颈不在 JPEG 编码质量，而在 resize 的输入分辨率：
+    //   视频分辨率 2700×2160（~17.5MB/帧），每次 ImagePublisher 内部做
+    //   cv::resize(2700×2160 → 480×270, INTER_AREA) 就要 3~5ms，
+    //   DrawAnnotated 里的 frame.clone() 也需要 ~2ms。
+    // 解决方案：在主循环入口处做 **一次** resize 得到小图 frame_display，
+    //   之后 DrawAnnotated / PublishImage 全程在 480×270 上操作，
+    //   ImagePublisher 内部检测到尺寸已吻合则跳过第二次 resize。
+    fox_cfg.use_jpeg = true;
+    fox_cfg.jpeg_quality = 50;
+    fox_cfg.publish_width = 480;
+    fox_cfg.publish_height = 270;
+    constexpr int kDisplayW = 480;
+    constexpr int kDisplayH = 270;
     mv::tool::FoxgloveSink sink{fox_cfg};
     sink.Start();
     MV_LOG_INFO("predict-voter-test", "Foxglove 服务已启动 (ws://0.0.0.0:{})", cli.foxglove_port);
@@ -307,6 +322,15 @@ int main(int argc, char** argv) {
     mv::tool::MetricsTracker metrics{30};
     cv::Mat frame;
     uint64_t frame_idx = 0;
+
+    // ── Foxglove 发布节流控制 ────────────────────────────────────────────────────────
+    // 主循环尽量跑满速，图像/JSON 类消息只按 foxglove_target_fps 向 Foxglove 推送。
+    // 这样计算（EKF、检测）始终每帧执行，可视化内容降频到 ~30fps，不影响控制精度。
+    // foxglove_publish_interval 表示每隔多少帧才发一次（由主循环预期 FPS 推算）。
+    constexpr int kFoxgloveTargetFps = 30;  ///< Foxglove 可视化目标帧率
+    int foxglove_publish_interval = 4;  ///< 每 N 帧向 Foxglove 发一次（初始假设主循环 ~120fps）
+    uint64_t last_fox_frame = 0;  ///< 上次向 Foxglove 发布图像的帧号
+    (void)kFoxgloveTargetFps;     // 可用于若干帧后动态调整区间
 
     while (!g_quit.load(std::memory_order_relaxed)) {
       const auto frame_start = std::chrono::steady_clock::now();
@@ -403,26 +427,76 @@ int main(int argc, char** argv) {
       const bool fire_permitted = voter.Vote(target, ctrl);
       ctrl.fire = fire_permitted;
 
-      sink.PublishImage(frame, "camera/raw", "camera", ts_ns);
-      if (sink.HasClients()) {
-        cv::Mat annotated = mv::tool::DrawAnnotated(frame, detections, ctrl, target,
-                                                     fire_permitted, metrics.CurrentFps());
-        mv::tool::DrawPredictedArmors(annotated, target, repro_K, repro_D, repro_R_c2g,
-                                       repro_t_c2g);
-        sink.PublishImage(annotated, "camera/annotated", "camera", ts_ns);
+      // ── 动态调整 Foxglove 发布间隔（后 100 帧根据实际 FPS 更新） ────────────────
+      if (frame_idx == 100) {
+        const double cur_fps = metrics.CurrentFps();
+        if (cur_fps > 1.0) {
+          foxglove_publish_interval = std::max(1, static_cast<int>(cur_fps / kFoxgloveTargetFps));
+        }
       }
-      sink.PublishDetections(detections, ts_ns);
-      sink.PublishPnpResult(detections, frame, ts_ns);
+      const bool should_publish_fox =
+          (frame_idx - last_fox_frame) >= static_cast<uint64_t>(foxglove_publish_interval);
+      if (should_publish_fox) {
+        last_fox_frame = frame_idx;
+      }
+
+      if (should_publish_fox) {
+        // ── 一次性预缩放：将 2700×2160 帧缩到显示分辨率 ──────────────────────
+        // 之后所有 Foxglove 图像操作均在小图上进行，彻底消除：
+        //   ① ImagePublisher 内部的重复 resize（3~5ms/次）
+        //   ② DrawAnnotated 中对原始大帧的 frame.clone()（~2ms）
+        cv::Mat frame_display;
+        const float sx = static_cast<float>(kDisplayW) / static_cast<float>(frame.cols);
+        const float sy = static_cast<float>(kDisplayH) / static_cast<float>(frame.rows);
+        cv::resize(frame, frame_display, cv::Size(kDisplayW, kDisplayH), 0, 0, cv::INTER_AREA);
+
+        // 缩放检测坐标到显示分辨率
+        std::vector<mv::Detection> dets_display = detections;
+        for (auto& d : dets_display) {
+          for (auto& pt : d.points) {
+            pt.x *= sx;
+            pt.y *= sy;
+          }
+          for (auto& pt : d.reprojected_points) {
+            pt.x *= sx;
+            pt.y *= sy;
+          }
+          for (auto& pt : d.reprojected_points_alt) {
+            pt.x *= sx;
+            pt.y *= sy;
+          }
+        }
+
+        // 缩放相机内参 K（用于 DrawPredictedArmors 的重投影）
+        cv::Mat repro_K_disp = repro_K.clone();
+        repro_K_disp.at<double>(0, 0) *= sx;  // fx
+        repro_K_disp.at<double>(1, 1) *= sy;  // fy
+        repro_K_disp.at<double>(0, 2) *= sx;  // cx
+        repro_K_disp.at<double>(1, 2) *= sy;  // cy
+
+        sink.PublishImage(frame_display, "camera/raw", "camera", ts_ns);
+        if (sink.HasClients()) {
+          cv::Mat annotated = mv::tool::DrawAnnotated(frame_display, dets_display, ctrl, target,
+                                                      fire_permitted, metrics.CurrentFps());
+          mv::tool::DrawPredictedArmors(annotated, target, repro_K_disp, repro_D, repro_R_c2g,
+                                        repro_t_c2g);
+          sink.PublishImage(annotated, "camera/annotated", "camera", ts_ns);
+        }
+        sink.PublishDetections(detections, ts_ns);
+        sink.PublishPnpResult(detections, frame_display, ts_ns);
+      }
 
       const Eigen::Vector3d aim_xyz =
           target.is_tracking ? target.position : Eigen::Vector3d::Zero();
-      sink.PublishTrackingVisuals(target, aim_xyz, "world", ts_ns);
-      sink.PublishJson("tracking/target_state",
-                       mv::tool::PredictParamManager::MakeTargetStateJson(target, ctrl), ts_ns);
-      sink.PublishJson("voter/decision",
-                       mv::tool::PredictParamManager::MakeVoterJson(fire_permitted, target,
-                                                                    ps_snap.voter_auto_fire),
-                       ts_ns);
+      if (should_publish_fox) {
+        sink.PublishTrackingVisuals(target, aim_xyz, "world", ts_ns);
+        sink.PublishJson("tracking/target_state",
+                         mv::tool::PredictParamManager::MakeTargetStateJson(target, ctrl), ts_ns);
+        sink.PublishJson("voter/decision",
+                         mv::tool::PredictParamManager::MakeVoterJson(fire_permitted, target,
+                                                                      ps_snap.voter_auto_fire),
+                         ts_ns);
+      }
       sink.PublishGimbalControl(ctrl, ts_ns);
       sink.PublishTransform("world", "gimbal", mv::tool::WorldToGimbalTF(ctrl.yaw, ctrl.pitch),
                             ts_ns);

@@ -47,6 +47,29 @@ struct FoxgloveSinkConfig {
   std::string name = "MiracleVision";  ///< 显示在 Foxglove 中的服务名称
   std::string host = "0.0.0.0";        ///< 监听地址
   uint16_t port = 8765;                ///< WebSocket 端口
+
+  // ── 图像发布优化选项 ──────────────────────────────────────────────────────
+  /**
+   * @brief 使用 JPEG 压缩图像（foxglove.CompressedImage），默认 false（原始 BGR8）
+   *
+   * 启用后图像数据量可降低 50~100 倍，WebSocket 占用从 ~300MB/s 降至 ~3MB/s，
+   * 可显著减少主循环因网络发送产生的阻塞延迟，提升处理帧率。
+   */
+  bool use_jpeg = false;
+
+  /** @brief JPEG 编码质量 [1, 100]，默认 80（画质/带宽平衡值） */
+  int jpeg_quality = 80;
+
+  /**
+   * @brief 发布到 Foxglove 时的目标宽度（像素），0 = 保持原始分辨率
+   *
+   * 例如设置 640 配合 publish_height=480 可将 1280×720 图像缩至四分之一面积，
+   * 进一步降低编码和传输耗时。仅在 use_jpeg=true 时生效。
+   */
+  int publish_width = 0;
+
+  /** @brief 发布到 Foxglove 时的目标高度（像素），0 = 保持原始分辨率 */
+  int publish_height = 0;
 };
 
 /**

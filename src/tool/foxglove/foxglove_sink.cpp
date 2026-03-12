@@ -112,7 +112,8 @@ struct FoxgloveSink::Impl {
     server = std::make_unique<foxglove::WebSocketServer>(std::move(server_res.value()));
 
     // 初始化七个子发布器（共享同一 Context）
-    image_pub = std::make_unique<detail::ImagePublisher>(ctx);
+    image_pub = std::make_unique<detail::ImagePublisher>(ctx, cfg.use_jpeg, cfg.jpeg_quality,
+                                                         cfg.publish_width, cfg.publish_height);
     detection_pub = std::make_unique<detail::DetectionPublisher>(ctx);
     pnp_viz = std::make_unique<detail::PnpVisualizer>(ctx);
     tf_pub = std::make_unique<detail::TfPublisher>(ctx);

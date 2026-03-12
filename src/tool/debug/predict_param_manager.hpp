@@ -42,7 +42,7 @@ struct ParamState {
   // ── 通用 ─────────────────────────────────────────────────────────────────
   mv::ArmorColor enemy_color{mv::ArmorColor::RED};
   bool loop_video{true};
-  double playback_fps{30.0};  ///< 0 = 不限速
+  double playback_fps{0.0};  ///< 0 = 不限速（默认不节流，可由 Foxglove 参数面板实时调节）
 
   // ── EKF 跟踪参数 ─────────────────────────────────────────────────────────
   int ekf_min_detect_count{5};

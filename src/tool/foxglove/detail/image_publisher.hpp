@@ -24,13 +24,22 @@
 #include <foxglove/context.hpp>
 #include <foxglove/schemas.hpp>
 #include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
 
 namespace mv::tool::detail {
 
 class ImagePublisher {
  public:
-  /** @param ctx  foxglove 全局上下文，由 FoxgloveSink::Impl 传入并共享 */
-  explicit ImagePublisher(foxglove::Context ctx);
+  /**
+   * @param ctx          foxglove 全局上下文，由 FoxgloveSink::Impl 传入并共享
+   * @param use_jpeg     true = 使用 JPEG CompressedImage；false = 原始 RawImage
+   * @param jpeg_quality JPEG 质量 [1,100]
+   * @param pub_w        发布宽度（0=保持原始尺寸）仅在 use_jpeg=true 时生效
+   * @param pub_h        发布高度（0=保持原始尺寸）仅在 use_jpeg=true 时生效
+   */
+  explicit ImagePublisher(foxglove::Context ctx, bool use_jpeg = false, int jpeg_quality = 80,
+                          int pub_w = 0, int pub_h = 0);
 
   /**
    * @brief 发布图像到指定 topic
@@ -56,16 +65,27 @@ class ImagePublisher {
   [[nodiscard]] static std::string DetectEncoding(const cv::Mat& img);
 
   /**
-   * @brief 懒创建或取出已有 channel，调用前须持有 mtx_
-   *
-   * @return 成功返回 channel 指针，创建失败返回 nullptr（会在 Publish 中被静默忽略）
+   * @brief 懒创建或取出已有 RawImage channel，调用前须持有 mtx_
    */
   foxglove::schemas::RawImageChannel* GetOrCreateChannel(const std::string& topic);
 
+  /**
+   * @brief 懒创建或取出已有 CompressedImage channel，调用前须持有 mtx_
+   */
+  foxglove::schemas::CompressedImageChannel* GetOrCreateCompressedChannel(const std::string& topic);
+
   // ── 成员变量 ─────────────────────────────────────────────────────────────
-  foxglove::Context ctx_;                                                    ///< SDK 全局上下文（共享引用计数）
-  std::unordered_map<std::string, foxglove::schemas::RawImageChannel> channels_;  ///< topic → channel 映射（懒创建）
-  std::mutex mtx_;                                                           ///< 保护 channels_ 的互斥锁
+  foxglove::Context ctx_;  ///< SDK 全局上下文（共享引用计数）
+  bool use_jpeg_{false};
+  int jpeg_quality_{80};
+  int pub_w_{0};  ///< 发布目标宽度（0=不缩放）
+  int pub_h_{0};  ///< 发布目标高度（0=不缩放）
+
+  std::unordered_map<std::string, foxglove::schemas::RawImageChannel>
+      channels_;  ///< RawImage channel 映射
+  std::unordered_map<std::string, foxglove::schemas::CompressedImageChannel>
+      compressed_channels_;  ///< CompressedImage channel 映射
+  std::mutex mtx_;           ///< 保护两个 channel 映射的互斥锁
 };
 
 }  // namespace mv::tool::detail

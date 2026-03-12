@@ -26,11 +26,19 @@
 #include <cstring>
 
 #include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
 #include <spdlog/spdlog.h>
 
 namespace mv::tool::detail {
 
-ImagePublisher::ImagePublisher(foxglove::Context ctx) : ctx_(std::move(ctx)) {}
+ImagePublisher::ImagePublisher(foxglove::Context ctx, bool use_jpeg, int jpeg_quality, int pub_w,
+                               int pub_h)
+    : ctx_(std::move(ctx)),
+      use_jpeg_(use_jpeg),
+      jpeg_quality_(jpeg_quality),
+      pub_w_(pub_w),
+      pub_h_(pub_h) {}
 
 std::string ImagePublisher::DetectEncoding(const cv::Mat& img) {
   switch (img.type()) {
@@ -63,6 +71,23 @@ foxglove::schemas::RawImageChannel* ImagePublisher::GetOrCreateChannel(const std
   return ok ? &eit->second : nullptr;
 }
 
+foxglove::schemas::CompressedImageChannel* ImagePublisher::GetOrCreateCompressedChannel(
+    const std::string& topic) {
+  auto it = compressed_channels_.find(topic);
+  if (it != compressed_channels_.end()) {
+    return &it->second;
+  }
+
+  auto result = foxglove::schemas::CompressedImageChannel::create(topic, ctx_);
+  if (!result.has_value()) {
+    spdlog::error("[ImagePublisher] Failed to create compressed channel '{}': {}", topic,
+                  foxglove::strerror(result.error()));
+    return nullptr;
+  }
+  auto [eit, ok] = compressed_channels_.emplace(topic, std::move(result.value()));
+  return ok ? &eit->second : nullptr;
+}
+
 void ImagePublisher::Publish(const cv::Mat& img, const std::string& topic,
                              const std::string& frame_id, uint64_t ts_ns) {
   if (img.empty()) {
@@ -70,6 +95,41 @@ void ImagePublisher::Publish(const cv::Mat& img, const std::string& topic,
   }
 
   std::lock_guard<std::mutex> lock(mtx_);
+
+  // ── JPEG 压缩路径 ─────────────────────────────────────────────────────────────
+  if (use_jpeg_) {
+    auto* ch = GetOrCreateCompressedChannel(topic);
+    if (ch == nullptr) {
+      return;
+    }
+
+    // 缩放（仅在需要时）
+    const cv::Mat* src = &img;
+    cv::Mat resized;
+    if (pub_w_ > 0 && pub_h_ > 0 && (img.cols != pub_w_ || img.rows != pub_h_)) {
+      cv::resize(img, resized, cv::Size(pub_w_, pub_h_), 0, 0, cv::INTER_AREA);
+      src = &resized;
+    }
+
+    // JPEG 编码（在锁内，避免并发竞争缓冲区）
+    std::vector<uchar> jpeg_buf;
+    const std::vector<int> params{cv::IMWRITE_JPEG_QUALITY, jpeg_quality_};
+    if (!cv::imencode(".jpg", *src, jpeg_buf, params)) {
+      spdlog::warn("[ImagePublisher] JPEG encode failed for topic '{}'", topic);
+      return;
+    }
+
+    foxglove::schemas::CompressedImage msg;
+    msg.frame_id = frame_id;
+    msg.format = "jpeg";
+    msg.timestamp = ToTs(ts_ns);
+    msg.data.resize(jpeg_buf.size());
+    std::memcpy(msg.data.data(), jpeg_buf.data(), jpeg_buf.size());
+    ch->log(msg, ts_ns);
+    return;
+  }
+
+  // ── 原始 BGR8 路径 ───────────────────────────────────────────────────────────────
   auto* ch = GetOrCreateChannel(topic);
   if (ch == nullptr) {
     return;
