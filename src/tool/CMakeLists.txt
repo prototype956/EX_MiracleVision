@@ -8,6 +8,7 @@
 
 add_subdirectory(debug)
 add_subdirectory(ekf)
+add_subdirectory(calibration)
 if(USE_FOXGLOVE_SDK)
     add_subdirectory(foxglove)
 else()
