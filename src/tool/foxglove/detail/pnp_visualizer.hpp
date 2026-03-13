@@ -44,6 +44,22 @@ class PnpVisualizer {
   explicit PnpVisualizer(foxglove::Context ctx);
 
   /**
+   * @brief 设置装甲板可视化尺寸（3D 面板渲染用）
+   *
+   * 与 vision.yaml `armor` 节点对应；由 FoxgloveSink 在 Start() 时从配置注入。
+   * 不调用则沿用默认值（与 yaml 默认值一致）。
+   *
+   * @param small_hw  小装甲板半宽（m），默认 0.0675
+   * @param big_hw    大装甲板半宽（m），默认 0.115
+   * @param hh        装甲板半高（m），大小装甲通用，默认 0.0275
+   */
+  void SetArmorDims(double small_hw, double big_hw, double hh) noexcept {
+    small_half_w_ = small_hw;
+    big_half_w_   = big_hw;
+    half_h_       = hh;
+  }
+
+  /**
    * @brief 发布 PnP 调试三层数据
    *
    * 若 frame 为空，则跳过 debug_image 层的发布；
@@ -71,6 +87,11 @@ class PnpVisualizer {
   std::optional<foxglove::schemas::SceneUpdateChannel> axes_ch_;          ///< pnp/axes_3d channel
   std::optional<foxglove::RawChannel> residuals_ch_;                      ///< pnp/residuals JSON channel
   std::mutex mtx_;                                                         ///< 保护 channel 初始化和消息发送
+
+  // ── 装甲板可视化尺寸（单位：m，默认值与 vision.yaml armor 节点一致）────────
+  double small_half_w_{0.0675};  ///< 小装甲板半宽
+  double big_half_w_{0.115};     ///< 大装甲板半宽
+  double half_h_{0.0275};        ///< 装甲板半高
 };
 
 }  // namespace mv::tool::detail

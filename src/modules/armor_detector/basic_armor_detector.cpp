@@ -322,9 +322,14 @@ std::vector<Detection> BasicArmorDetector::Detect(const cv::Mat& frame, ArmorCol
   }
 
   if (!detections.empty()) {
-    // 计算各目标到图像中心的距离（供上层排序/选择使用）
-    const cv::Point2f IMG_CTR{640.0F, 512.0F};
+    // 补全颜色字段：Detect() 按 enemy_color 滤波，所有结果均属于 enemy_color
+    // EkfTracker::Track() 依赖 d.color == enemy_color 过滤，UNKNOWN 会导致永远 LOST
+    const cv::Point2f IMG_CTR{
+        static_cast<float>(frame.cols) * 0.5F,
+        static_cast<float>(frame.rows) * 0.5F,
+    };
     for (auto& det : detections) {
+      det.color = enemy_color;
       det.distance_to_center = static_cast<double>(cv::norm(det.Center() - IMG_CTR));
     }
   }

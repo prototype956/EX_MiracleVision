@@ -1,20 +1,16 @@
 /**
  * @file rm_shooter.hpp
- * @brief RoboMaster 协议串口发射器
+ * @brief RoboMaster 协议串口发射器（正式协议 v1.0）
  *
- * 【帧格式（占位协议，等待下位机队友确认后替换）】
- * @code
- *   Byte 0:     0xA5          帧头
- *   Byte 1-2:   int16_t       yaw   × 100（0.01° 精度）
- *   Byte 3-4:   int16_t       pitch × 100
- *   Byte 5:     uint8_t       fire  (0=不开火, 1=开火)
- *   Byte 6:     uint8_t       CRC8  (对 Byte0..5 做 XOR 校验)
- *   Byte 7:     0x5A          帧尾
- * @endcode
+ * 【下行帧格式】详见 src/hal/serial/rm_protocol.hpp
+ *   - 总长 15 字节，帧头 0xAA/0x0F，帧尾 0x0D
+ *   - yaw/pitch 以 × 10000 的 int16_t Little-Endian 传输（精度 ~0.1 mrad）
+ *   - shoot 为脉冲触发：GimbalControl::fire==true 时发送 1，否则发送 0
+ *   - 完整性校验：CRC16-CCITT（覆盖帧头到 payload 末尾，共 12 字节）
  *
  * 【弹道补偿】
  *   bullet_speed 和 gravity 从配置读取，对 pitch 做简单重力补偿：
- *   Δpitch = atan2(g × d², 2 × v0² × cos²θ) / cos²θ  （近似抛物线）
+ *   Δpitch ≈ atan(g × d / (2 × v0²)) （小角度近似）
  *   补偿默认关闭（enable_ballistic_compensation: false）。
  *
  * 【YAML 配置字段】（来自 vision.yaml 的 auto_aim 节点）
@@ -30,8 +26,10 @@
  */
 #pragma once
 
+#include "hal/serial/rm_protocol.hpp"
 #include "interfaces/i_shooter.hpp"
 
+#include <array>
 #include <cstdint>
 
 namespace mv::modules {
@@ -53,11 +51,10 @@ class RmShooter final : public IShooter {
   [[nodiscard]] bool IsInitialized() const noexcept override { return initialized_; }
 
  private:
-  // ── 协议常量 ──────────────────────────────────────────────────────────────
+  // ── 协议帧缓冲 ────────────────────────────────────────────────────────────
 
-  static constexpr uint8_t FRAME_HEADER = 0xA5U;
-  static constexpr uint8_t FRAME_TAIL = 0x5AU;
-  static constexpr std::size_t FRAME_LEN = 8U;
+  /// 下行帧缓冲区（大小由 rm_protocol::DOWN_FRAME_LEN 决定）
+  std::array<uint8_t, protocol::DOWN_FRAME_LEN> frame_buf_{};
 
   // ── 参数 ─────────────────────────────────────────────────────────────────
 
@@ -67,10 +64,10 @@ class RmShooter final : public IShooter {
 
   bool initialized_{false};
 
-  // ── 内部方法 ──────────────────────────────────────────────────────────────
+  /// 下行帧序列号（0~255 循环滚动，每次 Send() 递增）
+  uint8_t seq_{0};
 
-  /** 简单 XOR CRC8（对帧头到 fire 字节） */
-  [[nodiscard]] static uint8_t CalcCrc8(const uint8_t* data, std::size_t len) noexcept;
+  // ── 内部方法 ──────────────────────────────────────────────────────────────
 
   /** 弹道补偿：根据 pitch + distance 返回修正后的 pitch */
   // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)

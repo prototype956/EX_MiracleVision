@@ -1,16 +1,26 @@
 /**
  * @file rm_shooter.cpp
- * @brief RoboMaster 协议串口发射器实现
+ * @brief RoboMaster 协议串口发射器实现（正式协议 v1.0）
  *
- * 【占位协议说明】
- *   当前帧格式为临时约定，等待下位机队友确认后替换（参见 docs 技术债说明）。
- *   帧总长 8 字节：[0xA5][yaw_lo][yaw_hi][pitch_lo][pitch_hi][fire][CRC8][0x5A]
+ * 【下行帧格式】总 15 字节，详见 src/hal/serial/rm_protocol.hpp
+ *   [0]  0xAA  帧头1
+ *   [1]  0x0F  帧头２（下行标识）
+ *   [2]  0x0A  payload 长度（10 字节）
+ *   [3]  seq   u8   序列号 0~255 循环
+ *   [4]  det   u8   0=未识别, 1=已识别
+ *   [5]  fire  u8   脉冲: 1=本帧开火, 0=不开火
+ *   [6-7] yaw  i16 LE  预测射击角 yaw   × 10000 [rad]
+ *   [8-9] pitch i16 LE  预测射击角 pitch × 10000 [rad]
+ *   [10-11] dist u16 LE  目标距离 × 100 [m]
+ *   [12-13] crc16 u16 LE  CRC16-CCITT（覆盖 [0]~[11]）
+ *   [14] 0x0D  帧尾
  */
 #include "rm_shooter.hpp"
 
 #include "core/logger.hpp"
 #include "factory/factory.hpp"
 #include "hal/serial/i_serial.hpp"
+#include "hal/serial/rm_protocol.hpp"
 
 #include <array>
 #include <cmath>
@@ -63,40 +73,59 @@ bool RmShooter::Send(hal::ISerial& serial, const GimbalControl& control) {
     pitch_out = BallisticCompensation(control.pitch, control.distance);
   }
 
-  // 将 yaw/pitch 从弧度转换为 0.01° 精度的 int16_t
-  static constexpr double RAD_TO_CDEG = 180.0 / M_PI * 100.0;  // rad → 0.01°
+  // 角度转换：rad → × 10000 的 int16_t（Little-Endian）
+  static constexpr double ANGLE_SCALE = 10000.0;
+  const auto YAW_I16 = static_cast<int16_t>(control.yaw * ANGLE_SCALE);
+  const auto PITCH_I16 = static_cast<int16_t>(pitch_out * ANGLE_SCALE);
 
-  const auto YAW_I16 = static_cast<int16_t>(control.yaw * RAD_TO_CDEG);
-  const auto PITCH_I16 = static_cast<int16_t>(pitch_out * RAD_TO_CDEG);
-  const auto FIRE_U8 = static_cast<uint8_t>(control.fire ? 1U : 0U);
+  // 距离转换：m → × 100 的 uint16_t，超范围时饱和到 UINT16_MAX
+  static constexpr double DIST_SCALE = 100.0;
+  static constexpr double DIST_MAX = 655.35;  // 65535 / 100
+  const double DIST_CLAMPED = (control.distance < DIST_MAX) ? control.distance : DIST_MAX;
+  const auto DIST_U16 = static_cast<uint16_t>(DIST_CLAMPED * DIST_SCALE);
 
-  // 组帧（小端序）
-  std::array<uint8_t, FRAME_LEN> frame{};
-  frame[0] = FRAME_HEADER;
-  frame[1] = static_cast<uint8_t>(YAW_I16 & 0xFF);
-  frame[2] = static_cast<uint8_t>((YAW_I16 >> 8) & 0xFF);
-  frame[3] = static_cast<uint8_t>(PITCH_I16 & 0xFF);
-  frame[4] = static_cast<uint8_t>((PITCH_I16 >> 8) & 0xFF);
-  frame[5] = FIRE_U8;
-  frame[6] = CalcCrc8(frame.data(), 6);
-  frame[7] = FRAME_TAIL;
+  // 开火脉冲：GimbalControl::fire == true 时发 1，否则 0
+  const uint8_t FIRE_U8 = control.fire ? 1U : 0U;
 
-  const bool SEND_OK = serial.Send(frame.data(), FRAME_LEN);
+  // 组帧：15 字节，详见文件头注释
+  //
+  //  [0]    0xAA  帧头1
+  //  [1]    0x0F  帧头2（下行标识）
+  //  [2]    0x0A  payload 长度
+  //  [3]    seq   序列号
+  //  [4]    det   识别状态
+  //  [5]    fire  脉冲
+  //  [6-7]  yaw   i16 LE
+  //  [8-9]  pitch i16 LE
+  //  [10-11] dist  u16 LE
+  //  [12-13] crc16 u16 LE（覆盖[0]~[11]）
+  //  [14]   0x0D  帧尾
+  frame_buf_.fill(0);
+  frame_buf_[0] = protocol::FRAME_HEAD_0;
+  frame_buf_[1] = protocol::DOWN_HEAD_1;
+  frame_buf_[2] = protocol::DOWN_PAYLOAD_LEN;
+  frame_buf_[3] = seq_++;
+  frame_buf_[4] = control.tracking ? 1U : 0U;
+  frame_buf_[5] = FIRE_U8;
+  frame_buf_[6] = static_cast<uint8_t>(YAW_I16 & 0xFF);
+  frame_buf_[7] = static_cast<uint8_t>((YAW_I16 >> 8) & 0xFF);
+  frame_buf_[8] = static_cast<uint8_t>(PITCH_I16 & 0xFF);
+  frame_buf_[9] = static_cast<uint8_t>((PITCH_I16 >> 8) & 0xFF);
+  frame_buf_[10] = static_cast<uint8_t>(DIST_U16 & 0xFF);
+  frame_buf_[11] = static_cast<uint8_t>((DIST_U16 >> 8) & 0xFF);
+
+  // CRC16-CCITT 覆盖 [0]~[11]（DOWN_CRC_LEN = 12）
+  const auto CRC = protocol::Crc16Ccitt(frame_buf_.data(), protocol::DOWN_CRC_LEN);
+  frame_buf_[12] = static_cast<uint8_t>(CRC & 0xFF);
+  frame_buf_[13] = static_cast<uint8_t>((CRC >> 8) & 0xFF);
+  frame_buf_[14] = protocol::FRAME_TAIL;
+
+  const auto SEND_OK = serial.Send(frame_buf_.data(), protocol::DOWN_FRAME_LEN);
   if (!SEND_OK) {
-    MV_LOG_WARN("RmShooter", "Serial.Send() failed (yaw={:.2f}° pitch={:.2f}° fire={})",
-                control.yaw * 180.0 / M_PI, pitch_out * 180.0 / M_PI, FIRE_U8);
+    MV_LOG_WARN("RmShooter", "Serial.Send() failed (seq={} yaw={:.4f}rad pitch={:.4f}rad fire={})",
+                frame_buf_[3], control.yaw, pitch_out, FIRE_U8);
   }
   return SEND_OK;
-}
-
-// ── 内部方法 ──────────────────────────────────────────────────────────────
-
-uint8_t RmShooter::CalcCrc8(const uint8_t* data, std::size_t len) noexcept {
-  uint8_t crc = 0x00U;
-  for (std::size_t idx = 0; idx < len; ++idx) {
-    crc ^= data[idx];
-  }
-  return crc;
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
@@ -105,10 +134,10 @@ double RmShooter::BallisticCompensation(double pitch_rad, double target_dist) co
   if (bullet_speed_ < 0.1F) {
     return pitch_rad;
   }
-  const double DELTA_V =
+  const double DELTA =
       static_cast<double>(gravity_) * target_dist /
       (2.0 * static_cast<double>(bullet_speed_) * static_cast<double>(bullet_speed_));
-  return pitch_rad + std::atan(DELTA_V);
+  return pitch_rad + std::atan(DELTA);
 }
 
 }  // namespace mv::modules

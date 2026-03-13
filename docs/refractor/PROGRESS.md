@@ -1,6 +1,6 @@
 # 重构进展追踪
 
-> 最后更新：2026-03-07
+> 最后更新：2026-03-12
 > 分支：`refactor/core-infra`
 
 ---
@@ -15,7 +15,12 @@ Stage 4 ─ 线程 Pipeline      ✅ 完成
 Stage 5 ─ 状态机 (FSM)       ✅ 完成
 Stage 6 ─ 替换旧模块 + main  🔶 进行中（模块 + main 完成，旧代码清理待做）
 Stage 7 ─ 工具层 + 可视化      🔶 进行中（FoxgloveSink 实现完成，接入待做）
+Stage 8 ─ EKF 预测器 + 投票  🔶 进行中（8-A~8-E 完成，8-F 阻塞等下位机协议）
+Stage 9 ─ 端到端调试          🔶 进行中（基础 Bug 修复完成，IMU/标定缺失）
 ```
+
+**后续开发路线图**：见 [`docs/ROADMAP.md`](../ROADMAP.md)
+**调试会话记录**：见 [`docs/DEBUG_SESSIONS.md`](../DEBUG_SESSIONS.md)
 
 ---
 
@@ -483,3 +488,40 @@ cmake --build build -- -j$(nproc) → [100%] Built target mv-vision-main
 | 任务 | 子阶段 | 优先级 |
 |------|--------|--------|
 | `SerialNode::TryRecv()` IMU 四元数解析 | 8-F | 阻塞（依赖下位机协议确认）|
+
+---
+
+## Stage 9：端到端调试（predict_voter_test） 🔶
+
+> 最后更新：2026-03-12
+> 详细调试记录：`docs/DEBUG_SESSIONS.md`
+
+### 概述
+
+使用 `mv-predict-voter-test` + Foxglove Studio 对完整链路（检测→PnP→EKF→投票）进行离线视频端到端调试。
+测试视频：`video/debug/17.mp4`（2700×2160，256帧，30fps，红方装甲板正面靠近）
+
+### 已发现并修复的 Bug
+
+| # | 文件 | 描述 | 状态 |
+|---|------|------|------|
+| 1 | `src/modules/armor_detector/basic_armor_detector.cpp` | `det.color = UNKNOWN` 导致 EkfTracker 永远 LOST | ✅ 已修复 |
+| 2 | `src/modules/armor_detector/basic_armor_detector.cpp` | `IMG_CTR` 硬编码 `{640, 512}` 导致视频分辨率下距离中心计算错误 | ✅ 已修复 |
+| 3 | `src/test/predict_voter_test.cpp` | `/tf` 使用预测角 `ctrl.yaw/pitch` + `R_FIX(-90°Rx)` 导致 3D 面板 pnp 与 tracking 不重合 | ✅ 已修复 |
+| 4 | `configs/vision.yaml` | K 矩阵为 1280×1024 标定值，视频帧 2700×2160，缩放后 fx 错误（314 vs 正确 661） | ✅ 已按 ×2.109375 缩放 |
+
+### 残余问题（待下一阶段解决）
+
+| # | 问题 | 阻塞原因 |
+|---|------|---------|
+| A | 预测重投影（P0-P3）与实际装甲板像素偏差大 | 依赖真实 IMU + 手眼标定 |
+| B | `R_c2g = [[1,0,0],[0,-1,0],[0,0,1]]` 行列式=-1（反射），轴序与 EKF 约定疑似不一致 | 需配合真实 IMU 复现后确认 |
+| C | 无 IMU 时 `R_gimbal2world = I`，EKF 世界系等同于相机系，无法验证预测精度 | 依赖 Stage 8-F 串口 IMU 解析 |
+| D | 相机安装倾角（Pitch 约 5°~15°）未补偿，EKF 圆周运动平面受倾角污染 | 依赖手眼标定 |
+
+### 下一步行动
+
+1. **完成串口协议**（Stage 8-F）→ 获取真实 IMU 四元数
+2. **执行手眼标定**→ 获取准确 `R_c2g`、`t_c2g`
+3. **接入真实 IMU 后重新视频调试**，验证 `R_c2g` 轴序和重投影精度
+4. 参考 `docs/ROADMAP.md` 的完整计划

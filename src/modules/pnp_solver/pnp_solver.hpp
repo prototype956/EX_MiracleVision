@@ -120,11 +120,10 @@ class PnpSolver final : public ISolver {
   Eigen::Vector3d t_camera2gimbal_{Eigen::Vector3d::Zero()};
 
   // ── 世界坐标模板 ──────────────────────────────────────────────────────────
-  // 小装甲：half_w=0.0675, half_h=0.0275
-  // 大装甲：half_w=0.115,  half_h=0.0275
-  static constexpr float SMALL_HALF_W = 0.0675F;
-  static constexpr float BIG_HALF_W = 0.115F;
-  static constexpr float HALF_H = 0.0275F;
+  // 默认值与 vision.yaml armor 节点一致；Init() 读取 yaml 后覆盖。
+  float small_half_w_{0.0675F};  ///< 小装甲板半宽（m）
+  float big_half_w_{0.115F};     ///< 大装甲板半宽（m）
+  float half_h_{0.0275F};        ///< 装甲板半高，大小装甲相同（m）
 
   // ── 时序锁定（Temporal Continuity）──────────────────────────────────────
   // 近距离时 IPPE 两解的重投影误差非常接近，单帧比较容易翻解。

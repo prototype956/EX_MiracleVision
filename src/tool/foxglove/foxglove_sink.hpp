@@ -70,6 +70,14 @@ struct FoxgloveSinkConfig {
 
   /** @brief 发布到 Foxglove 时的目标高度（像素），0 = 保持原始分辨率 */
   int publish_height = 0;
+
+  // ── 装甲板可视化尺寸（用于 PnpVisualizer 3D 面板渲染，单位：m）────────────
+  /** @brief 小装甲板半宽，默认与 vision.yaml armor.small_half_w 一致 */
+  double armor_small_half_w = 0.0675;
+  /** @brief 大装甲板半宽，默认与 vision.yaml armor.big_half_w 一致 */
+  double armor_big_half_w   = 0.115;
+  /** @brief 装甲板半高，大小装甲通用，默认与 vision.yaml armor.half_h 一致 */
+  double armor_half_h       = 0.0275;
 };
 
 /**

@@ -103,10 +103,20 @@ bool PnpSolver::Init(const YAML::Node& config) {
     }
   }
 
+  // ── 装甲板物理尺寸（可选，armor 节点优先）─────────────────────────────
+  if (config["armor"]) {
+    const auto& armor = config["armor"];
+    small_half_w_ = armor["small_half_w"].as<float>(0.0675F);
+    big_half_w_   = armor["big_half_w"].as<float>(0.115F);
+    half_h_       = armor["half_h"].as<float>(0.0275F);
+  }
+
   initialized_ = true;
-  MV_LOG_INFO("PnpSolver", "Init OK — fx={:.1f} fy={:.1f} cx={:.1f} cy={:.1f}",
+  MV_LOG_INFO("PnpSolver", "Init OK — fx={:.1f} fy={:.1f} cx={:.1f} cy={:.1f} "
+              "armor small_hw={:.4f} big_hw={:.4f} hh={:.4f}",
               camera_matrix_.at<double>(0, 0), camera_matrix_.at<double>(1, 1),
-              camera_matrix_.at<double>(0, 2), camera_matrix_.at<double>(1, 2));
+              camera_matrix_.at<double>(0, 2), camera_matrix_.at<double>(1, 2),
+              small_half_w_, big_half_w_, half_h_);
   return true;
 }
 
@@ -119,8 +129,8 @@ bool PnpSolver::Solve(Detection& detection) {
   }
 
   // 选取世界坐标模板
-  const float HALF_W = (detection.type == ArmorType::BIG) ? BIG_HALF_W : SMALL_HALF_W;
-  const std::vector<cv::Point3f> WORLD_PTS = MakeWorldPoints(HALF_W, HALF_H);
+  const float HALF_W = (detection.type == ArmorType::BIG) ? big_half_w_ : small_half_w_;
+  const std::vector<cv::Point3f> WORLD_PTS = MakeWorldPoints(HALF_W, half_h_);
 
   // 组织图像点
   std::vector<cv::Point2f> img_pts(detection.points.begin(), detection.points.end());

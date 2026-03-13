@@ -212,9 +212,9 @@ void PnpVisualizer::Publish(const std::vector<mv::Detection>& dets, const cv::Ma
 
       // 装甲板平面（半透明浅蓝矩形，展示装甲板在 3D 场景中的实际尺寸）
       foxglove::schemas::CubePrimitive armor_plane;
-      const double hw = (det.type == mv::ArmorType::BIG) ? 0.115 : 0.0675;
+      const double hw = (det.type == mv::ArmorType::BIG) ? big_half_w_ : small_half_w_;
       armor_plane.pose = MakePose(origin.x(), origin.y(), origin.z(), 0.0, 0.0, 0.0, 1.0);
-      armor_plane.size = foxglove::schemas::Vector3{hw * 2.0, 0.055, 0.004};
+      armor_plane.size = foxglove::schemas::Vector3{hw * 2.0, half_h_ * 2.0, 0.004};
       foxglove::schemas::Color plane_color = {0.3, 0.7, 1.0, 0.45};
       armor_plane.color = plane_color;
       entity.cubes.push_back(std::move(armor_plane));
@@ -244,10 +244,10 @@ void PnpVisualizer::Publish(const std::vector<mv::Detection>& dets, const cv::Ma
 
         // 第二解的装甲板平面（橙色半透明）
         foxglove::schemas::CubePrimitive alt_plane;
-        const double ahw = (det.type == mv::ArmorType::BIG) ? 0.115 : 0.0675;
+        const double ahw = (det.type == mv::ArmorType::BIG) ? big_half_w_ : small_half_w_;
         alt_plane.pose =
             MakePose(alt_origin.x(), alt_origin.y(), alt_origin.z(), 0.0, 0.0, 0.0, 1.0);
-        alt_plane.size = foxglove::schemas::Vector3{ahw * 2.0, 0.055, 0.004};
+        alt_plane.size = foxglove::schemas::Vector3{ahw * 2.0, half_h_ * 2.0, 0.004};
         alt_plane.color = {1.0, 0.45, 0.0, 0.3};
         alt_entity.cubes.push_back(std::move(alt_plane));
 

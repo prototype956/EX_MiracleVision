@@ -116,6 +116,7 @@ struct FoxgloveSink::Impl {
                                                          cfg.publish_width, cfg.publish_height);
     detection_pub = std::make_unique<detail::DetectionPublisher>(ctx);
     pnp_viz = std::make_unique<detail::PnpVisualizer>(ctx);
+    pnp_viz->SetArmorDims(cfg.armor_small_half_w, cfg.armor_big_half_w, cfg.armor_half_h);
     tf_pub = std::make_unique<detail::TfPublisher>(ctx);
     thread_monitor = std::make_unique<detail::ThreadMonitor>(ctx);
     gimbal_pub = std::make_unique<detail::GimbalPublisher>(ctx);

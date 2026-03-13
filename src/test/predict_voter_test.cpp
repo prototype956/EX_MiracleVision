@@ -275,11 +275,15 @@ int main(int argc, char** argv) {
     //   之后 DrawAnnotated / PublishImage 全程在 480×270 上操作，
     //   ImagePublisher 内部检测到尺寸已吻合则跳过第二次 resize。
     fox_cfg.use_jpeg = true;
-    fox_cfg.jpeg_quality = 50;
-    fox_cfg.publish_width = 480;
-    fox_cfg.publish_height = 270;
-    constexpr int kDisplayW = 480;
-    constexpr int kDisplayH = 270;
+    fox_cfg.jpeg_quality   = cfg.Get<int>("debug.foxglove.jpeg_quality",   50);
+    fox_cfg.publish_width  = cfg.Get<int>("debug.foxglove.display_width",  480);
+    fox_cfg.publish_height = cfg.Get<int>("debug.foxglove.display_height", 270);
+    const int kDisplayW = fox_cfg.publish_width;
+    const int kDisplayH = fox_cfg.publish_height;
+    // 装甲板可视化尺寸也从 yaml 读取，同步到 PnpVisualizer 3D 渲染
+    fox_cfg.armor_small_half_w = cfg.Get<double>("armor.small_half_w", 0.0675);
+    fox_cfg.armor_big_half_w   = cfg.Get<double>("armor.big_half_w",   0.115);
+    fox_cfg.armor_half_h       = cfg.Get<double>("armor.half_h",       0.0275);
     mv::tool::FoxgloveSink sink{fox_cfg};
     sink.Start();
     MV_LOG_INFO("predict-voter-test", "Foxglove 服务已启动 (ws://0.0.0.0:{})", cli.foxglove_port);
@@ -327,7 +331,8 @@ int main(int argc, char** argv) {
     // 主循环尽量跑满速，图像/JSON 类消息只按 foxglove_target_fps 向 Foxglove 推送。
     // 这样计算（EKF、检测）始终每帧执行，可视化内容降频到 ~30fps，不影响控制精度。
     // foxglove_publish_interval 表示每隔多少帧才发一次（由主循环预期 FPS 推算）。
-    constexpr int kFoxgloveTargetFps = 30;  ///< Foxglove 可视化目标帧率
+    const int kFoxgloveTargetFps =
+        cfg.Get<int>("debug.foxglove.target_fps", 30);  ///< Foxglove 可视化目标帧率
     int foxglove_publish_interval = 4;  ///< 每 N 帧向 Foxglove 发一次（初始假设主循环 ~120fps）
     uint64_t last_fox_frame = 0;  ///< 上次向 Foxglove 发布图像的帧号
     (void)kFoxgloveTargetFps;     // 可用于若干帧后动态调整区间
@@ -498,8 +503,18 @@ int main(int argc, char** argv) {
                          ts_ns);
       }
       sink.PublishGimbalControl(ctrl, ts_ns);
-      sink.PublishTransform("world", "gimbal", mv::tool::WorldToGimbalTF(ctrl.yaw, ctrl.pitch),
-                            ts_ns);
+      // world → gimbal TF 必须用当前云台姿态（模拟输入角），而非预测瞄准角(ctrl.yaw/pitch)。
+      // 同时去掉 WorldToGimbalTF 内部的 R_FIX(-90°Rx)，与 EKF 的 R_gimbal2world 保持一致：
+      //   EKF: R_gimbal2world = SimGimbalQuaternion(sim_yaw, sim_pitch, sim_roll).toRotMat()
+      //   TF:  T.block<3,3> = 同一旋转矩阵  →  pnp/axes_3d(gimbal 系) 与 tracking/*(world 系) 重合
+      {
+        Eigen::Matrix4d T_w_g = Eigen::Matrix4d::Identity();
+        T_w_g.block<3, 3>(0, 0) =
+            mv::tool::SimGimbalQuaternion(ps_snap.sim_yaw_deg, ps_snap.sim_pitch_deg,
+                                          ps_snap.sim_roll_deg)
+                .toRotationMatrix();
+        sink.PublishTransform("world", "gimbal", T_w_g, ts_ns);
+      }
 
       if (frame_idx % 60 == 0) {
         sink.PublishJson("debug/params", pm.MakeParamsSnapshotJson(), ts_ns);
