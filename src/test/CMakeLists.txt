@@ -95,3 +95,8 @@ if(USE_FOXGLOVE_SDK)
 else()
     message(STATUS "      ⊗ mv-predict-voter-test skipped (USE_FOXGLOVE_SDK=OFF)")
 endif()
+
+add_executable(mv-minimum-real-vision minimum_real_vision.cpp)
+target_link_libraries(mv-minimum-real-vision PRIVATE mv-core mv-hal-serial)
+target_compile_definitions(mv-minimum-real-vision PRIVATE CONFIG_FILE_PATH="${CONFIG_FILE_PATH}")
+
