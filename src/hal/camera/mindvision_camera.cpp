@@ -24,6 +24,10 @@
 
 #include "mindvision_camera.hpp"
 
+#include <string>
+#include <vector>
+
+#include <opencv2/core/core_c.h>
 #include <opencv2/imgproc.hpp>
 
 #ifdef MV_HAS_MVSDK
@@ -49,7 +53,7 @@ struct MindVisionCamera::Impl {
 
 #ifdef MV_HAS_MVSDK
   int h_camera{0};
-  unsigned char* rgb_buffer{nullptr};
+  std::vector<unsigned char> rgb_buffer{};
 
   tSdkCameraDevInfo dev_info{};
   tSdkCameraCapbility capability{};
@@ -90,10 +94,36 @@ bool MindVisionCamera::Open(const YAML::Node& config) {
     return true;  // 幂等：已打开则直接返回
   }
 
-  // 从 YAML 读取参数，提供合理默认值（防止配置文件缺字段时崩溃）
-  impl_->exposure_us = config["exposure_us"].as<int>(5000);
-  impl_->width = config["resolution"]["width"].as<int>(1280);
-  impl_->height = config["resolution"]["height"].as<int>(800);
+  // 从 YAML 读取参数，兼容两种分辨率写法：
+  //   1) resolution: "1280x800"
+  //   2) resolution: { width: 1280, height: 800 }
+  impl_->exposure_us = config["exposure_us"].as<int>(config["exposure"].as<int>(5000));
+
+  impl_->width = 1280;
+  impl_->height = 800;
+  YAML::Node resolution_node = config["resolution"];
+  if (resolution_node) {
+    if (resolution_node.IsMap()) {
+      impl_->width = resolution_node["width"].as<int>(1280);
+      impl_->height = resolution_node["height"].as<int>(800);
+    } else if (resolution_node.IsScalar()) {
+      auto resolution_text = resolution_node.as<std::string>();
+      std::size_t separator_pos = resolution_text.find('x');
+      if (separator_pos != std::string::npos) {
+        try {
+          impl_->width = std::stoi(resolution_text.substr(0, separator_pos));
+          impl_->height = std::stoi(resolution_text.substr(separator_pos + 1));
+        } catch (const std::exception&) {
+          MV_LOG_WARN("HAL.Camera.MV", "invalid resolution '{}', fallback to 1280x800",
+                      resolution_text);
+        }
+      } else {
+        MV_LOG_WARN("HAL.Camera.MV", "invalid resolution '{}', fallback to 1280x800",
+                    resolution_text);
+      }
+    }
+  }
+
   impl_->channel = config["channel"].as<int>(3);
 
   CameraSdkInit(1);
@@ -114,12 +144,11 @@ bool MindVisionCamera::Open(const YAML::Node& config) {
   CameraGetCapability(impl_->h_camera, &impl_->capability);
 
   // 分配 RGB 缓冲区（大小取相机支持的最大分辨率，避免反复 realloc）
-  const std::size_t buf_size =
-      static_cast<std::size_t>(impl_->capability.sResolutionRange.iHeightMax) *
-      static_cast<std::size_t>(impl_->capability.sResolutionRange.iWidthMax) * 3;
-  impl_->rgb_buffer =
-      static_cast<unsigned char*>(malloc(buf_size));  // NOLINT(cppcoreguidelines-no-malloc)
-  if (impl_->rgb_buffer == nullptr) {
+  std::size_t buf_size = static_cast<std::size_t>(impl_->capability.sResolutionRange.iHeightMax) *
+                         static_cast<std::size_t>(impl_->capability.sResolutionRange.iWidthMax) * 3;
+  try {
+    impl_->rgb_buffer.resize(buf_size);
+  } catch (const std::bad_alloc&) {
     MV_LOG_ERROR("HAL.Camera.MV", "failed to allocate RGB buffer ({} bytes)", buf_size);
     CameraUnInit(impl_->h_camera);
     return false;
@@ -139,8 +168,8 @@ bool MindVisionCamera::Open(const YAML::Node& config) {
   CameraPlay(impl_->h_camera);
 
   impl_->is_open = true;
-  MV_LOG_INFO("HAL.Camera.MV", "opened ({}x{}, exposure={}us)",
-              impl_->width, impl_->height, impl_->exposure_us);
+  MV_LOG_INFO("HAL.Camera.MV", "opened ({}x{}, exposure={}us)", impl_->width, impl_->height,
+              impl_->exposure_us);
   return true;
 #endif
 }
@@ -153,10 +182,8 @@ void MindVisionCamera::Close() {
 
   CameraUnInit(impl_->h_camera);
 
-  if (impl_->rgb_buffer != nullptr) {
-    free(impl_->rgb_buffer);  // NOLINT(cppcoreguidelines-no-malloc)
-    impl_->rgb_buffer = nullptr;
-  }
+  impl_->rgb_buffer.clear();
+  impl_->rgb_buffer.shrink_to_fit();
   if (impl_->ipl_image != nullptr) {
     cvReleaseImageHeader(&impl_->ipl_image);
     impl_->ipl_image = nullptr;
@@ -178,9 +205,9 @@ bool MindVisionCamera::Grab(cv::Mat& frame) {
   }
 
   // 超时设为 1000ms：比正常帧周期长，但不会让调用方卡太久
-  constexpr int kTimeoutMs = 1000;
-  const int status =
-      CameraGetImageBuffer(impl_->h_camera, &impl_->frame_head, &impl_->raw_buffer, kTimeoutMs);
+  int timeout_ms = 1000;
+  int status =
+      CameraGetImageBuffer(impl_->h_camera, &impl_->frame_head, &impl_->raw_buffer, timeout_ms);
 
   if (status != CAMERA_STATUS_SUCCESS) {
     MV_LOG_WARN("HAL.Camera.MV", "CameraGetImageBuffer timeout/error, status={}", status);
@@ -188,7 +215,8 @@ bool MindVisionCamera::Grab(cv::Mat& frame) {
   }
 
   // SDK 做去马赛克 / 颜色空间转换，结果写入 rgb_buffer
-  CameraImageProcess(impl_->h_camera, impl_->raw_buffer, impl_->rgb_buffer, &impl_->frame_head);
+  CameraImageProcess(impl_->h_camera, impl_->raw_buffer, impl_->rgb_buffer.data(),
+                     &impl_->frame_head);
 
   // 用 IplImage 头包装 rgb_buffer（零拷贝）
   if (impl_->ipl_image != nullptr) {
@@ -196,7 +224,7 @@ bool MindVisionCamera::Grab(cv::Mat& frame) {
   }
   impl_->ipl_image = cvCreateImageHeader(
       cvSize(impl_->frame_head.iWidth, impl_->frame_head.iHeight), IPL_DEPTH_8U, impl_->channel);
-  cvSetData(impl_->ipl_image, impl_->rgb_buffer, impl_->frame_head.iWidth * impl_->channel);
+  cvSetData(impl_->ipl_image, impl_->rgb_buffer.data(), impl_->frame_head.iWidth * impl_->channel);
 
   // 深拷贝到 cv::Mat，之后立即归还 DMA buffer
   // 深拷贝原因见文件头注释：尽快释放 SDK buffer 防止丢帧

@@ -56,6 +56,7 @@
 #include "tool/foxglove/foxglove_sink.hpp"
 // PredictParamManager 复用离线调试的参数管理（双向 Foxglove 同步）
 #include "tool/debug/predict_param_manager.hpp"
+#include "tool/foxglove/detail/serial_visualizer.hpp"
 
 #include <array>
 #include <atomic>
@@ -262,6 +263,7 @@ int main() {
     mv::modules::RoiManager roi_mgr;
     mv::tool::MetricsTracker metrics{30};
     mv::tool::TerminalHUD hud;
+    mv::tool::SerialVisualizer serial_viz;
 
     RuntimeState rt_state;
     rt_state.enemy_color = param_manager.State().enemy_color;
@@ -315,7 +317,10 @@ int main() {
         std::size_t received = 0;
         if (serial.Recv(rx_buffer.data(), rx_buffer.size(), received) && received > 0) {
           mv::protocol::UpFrame up_frame{};
-          if (mv::protocol::TryParseUpFrame(rx_buffer.data(), received, &up_frame)) {
+          const bool PARSE_OK =
+              mv::protocol::TryParseUpFrame(rx_buffer.data(), received, &up_frame);
+          serial_viz.OnRxData(rx_buffer.data(), received, PARSE_OK ? &up_frame : nullptr, PARSE_OK);
+          if (PARSE_OK) {
             UpdateRuntimeStateFromUpFrame(up_frame, rt_state);
             // 四元数注入 EKF（每帧必须在 Predict() 前调用）
             predictor.SetGimbalOrientation(rt_state.gimbal_quat);
@@ -433,6 +438,9 @@ int main() {
         voter_json["bullet_speed"] = rt_state.bullet_speed;
         voter_json["fps"] = CURRENT_FPS;
         sink.PublishJson("voter/decision", voter_json, TIMESTAMP_NS);
+
+        // 串口上行帧可视化（三路 Topic：rx_status / rx_raw_hex / stats）
+        serial_viz.Publish(sink, TIMESTAMP_NS);
 
         // 线程健康：单进程单线程模式下只有一个"MainLoop"节点
         mv::tool::FoxgloveSink::ThreadMetrics main_metrics;

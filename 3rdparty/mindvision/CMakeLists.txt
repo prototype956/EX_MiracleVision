@@ -5,8 +5,10 @@
 
 message(STATUS "    Configuring MindVision SDK...")
 
-# 创建 IMPORTED 库
-add_library(MVSDK SHARED IMPORTED)
+# 创建 IMPORTED 库。
+# 这里必须使用 GLOBAL：mv-hal-camera 位于 src/hal/camera，是当前目录的兄弟目录；
+# 如果不设为 GLOBAL，TARGET MVSDK 在兄弟目录中不可见，导致误编译为 stub 模式。
+add_library(MVSDK SHARED IMPORTED GLOBAL)
 
 # 检测系统架构
 execute_process(
