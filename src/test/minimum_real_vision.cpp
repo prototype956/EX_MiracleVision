@@ -66,8 +66,9 @@ int main() {
         *reinterpret_cast<int16_t*>(&tx_buf[8]) = mock_cmd.pitch;
         *reinterpret_cast<uint16_t*>(&tx_buf[10]) = mock_cmd.distance;
         
-        // CRC 暂且填 0，电控端代码若不校验可过，或未来补齐CRC计算
-        *reinterpret_cast<uint16_t*>(&tx_buf[12]) = 0x0000; 
+        // 计算并填入 CRC16-CCITT
+        uint16_t crc = Crc16Ccitt(tx_buf, DOWN_CRC_LEN);
+        *reinterpret_cast<uint16_t*>(&tx_buf[12]) = crc;
         tx_buf[14] = FRAME_TAIL;
 
         serial->Send(tx_buf, DOWN_FRAME_LEN);

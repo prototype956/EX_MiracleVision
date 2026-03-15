@@ -181,4 +181,75 @@ struct UpFrame {
   return crc;
 }
 
+/**
+ * @brief 按协议固定偏移从完整上行帧（28 字节）解包 UpFrame
+ *
+ * @param frame  完整上行帧起始地址（必须以 0xAA 0xFF 开头）
+ * @param out    解包输出
+ */
+inline void DecodeUpFrame(const uint8_t* frame, UpFrame* out) {
+  if (frame == nullptr || out == nullptr) {
+    return;
+  }
+
+  out->seq = frame[3];
+  out->color = frame[4];
+  out->mode = static_cast<UpMode>(frame[5]);
+  out->robot_id = static_cast<RobotId>(frame[6]);
+  out->bullet_speed = static_cast<int16_t>(static_cast<uint16_t>(frame[7]) |
+                                           (static_cast<uint16_t>(frame[8]) << 8U));
+  out->q_w = static_cast<int16_t>(static_cast<uint16_t>(frame[9]) |
+                                  (static_cast<uint16_t>(frame[10]) << 8U));
+  out->q_x = static_cast<int16_t>(static_cast<uint16_t>(frame[11]) |
+                                  (static_cast<uint16_t>(frame[12]) << 8U));
+  out->q_y = static_cast<int16_t>(static_cast<uint16_t>(frame[13]) |
+                                  (static_cast<uint16_t>(frame[14]) << 8U));
+  out->q_z = static_cast<int16_t>(static_cast<uint16_t>(frame[15]) |
+                                  (static_cast<uint16_t>(frame[16]) << 8U));
+  out->yaw = static_cast<int16_t>(static_cast<uint16_t>(frame[17]) |
+                                  (static_cast<uint16_t>(frame[18]) << 8U));
+  out->pitch = static_cast<int16_t>(static_cast<uint16_t>(frame[19]) |
+                                    (static_cast<uint16_t>(frame[20]) << 8U));
+  out->yaw_vel = static_cast<int16_t>(static_cast<uint16_t>(frame[21]) |
+                                      (static_cast<uint16_t>(frame[22]) << 8U));
+  out->pitch_vel = static_cast<int16_t>(static_cast<uint16_t>(frame[23]) |
+                                        (static_cast<uint16_t>(frame[24]) << 8U));
+}
+
+/**
+ * @brief 在接收缓冲区中搜索并解析第一帧合法上行帧
+ *
+ * 解析流程：帧头匹配(0xAA 0xFF) → CRC16 校验 → 解包。
+ *
+ * @param rx_buf    接收缓冲区
+ * @param received  有效字节数
+ * @param out       解析成功时输出 UpFrame
+ * @return true     找到并成功解析合法上行帧
+ */
+[[nodiscard]] inline bool TryParseUpFrame(const uint8_t* rx_buf, std::size_t received,
+                                          UpFrame* out) {
+  if (rx_buf == nullptr || out == nullptr) {
+    return false;
+  }
+
+  for (std::size_t i = 0; i + UP_FRAME_LEN <= received; ++i) {
+    if (rx_buf[i] != FRAME_HEAD_0 || rx_buf[i + 1] != UP_HEAD_1) {
+      continue;
+    }
+
+    const uint8_t* frame = rx_buf + i;
+    const uint16_t CRC_CALC = Crc16Ccitt(frame, UP_CRC_LEN);
+    const uint16_t CRC_RECV =
+        static_cast<uint16_t>(frame[25]) | (static_cast<uint16_t>(frame[26]) << 8U);
+    if (CRC_CALC != CRC_RECV) {
+      continue;
+    }
+
+    DecodeUpFrame(frame, out);
+    return true;
+  }
+
+  return false;
+}
+
 }  // namespace mv::protocol

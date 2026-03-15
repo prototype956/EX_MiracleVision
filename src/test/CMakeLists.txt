@@ -100,3 +100,35 @@ add_executable(mv-minimum-real-vision minimum_real_vision.cpp)
 target_link_libraries(mv-minimum-real-vision PRIVATE mv-core mv-hal-serial)
 target_compile_definitions(mv-minimum-real-vision PRIVATE CONFIG_FILE_PATH="${CONFIG_FILE_PATH}")
 
+# ── 实机联调程序（检测 + 预测 + 决策 + 串口下发）──────────────────────────────
+if(USE_FOXGLOVE_SDK)
+    add_executable(mv-real-debug-vision real_debug_vision.cpp)
+
+    target_link_libraries(mv-real-debug-vision
+        PRIVATE
+            mv-core
+            mv-tool-foxglove
+            mv-tool-debug
+            mv-mod-armor-detector
+            mv-mod-pnp-solver
+            mv-mod-ekf-predictor
+            mv-mod-cooldown-voter
+            mv-mod-rm-shooter
+            mv-hal-camera
+            mv-hal-serial
+            foxglove_sdk
+    )
+
+    target_link_directories(mv-real-debug-vision
+        PRIVATE
+            ${CMAKE_SOURCE_DIR}/3rdparty/foxglove/lib
+    )
+
+    target_compile_definitions(mv-real-debug-vision PRIVATE
+        CONFIG_FILE_PATH="${CONFIG_FILE_PATH}"
+    )
+
+    message(STATUS "      + mv-real-debug-vision (实机联调：检测+预测+决策+串口+Foxglove)")
+else()
+    message(STATUS "      ⊗ mv-real-debug-vision skipped (USE_FOXGLOVE_SDK=OFF)")
+endif()
