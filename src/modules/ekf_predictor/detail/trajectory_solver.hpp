@@ -123,7 +123,7 @@ class TrajectorySolver {
    * @param target         当前状态（用于 ArmorXyzaList()）
    * @param current_yaw    云台当前 yaw 偏角（rad）
    */
-  [[nodiscard]] AimPoint ChooseAimPoint(const EkfTrackTarget& target, double current_yaw);
+  [[nodiscard]] AimPoint ChooseAimPoint(const EkfTrackTarget& target, double current_yaw) const;
 };
 
 }  // namespace mv::modules::detail

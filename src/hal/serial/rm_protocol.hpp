@@ -54,10 +54,10 @@
  *  [11]  2     q_x            i16 LE    云台姿态四元数 x × 10000
  *  [13]  2     q_y            i16 LE    云台姿态四元数 y × 10000
  *  [15]  2     q_z            i16 LE    云台姿态四元数 z × 10000
- *  [17]  2     yaw            i16 LE    云台当前 yaw   × 10000 [rad]（兜底冗余）
- *  [19]  2     pitch          i16 LE    云台当前 pitch × 10000 [rad]（兜底冗余）
- *  [21]  2     yaw_vel        i16 LE    yaw 角速度   × 10000 [rad/s]
- *  [23]  2     pitch_vel      i16 LE    pitch 角速度 × 10000 [rad/s]
+ *  [17]  2     yaw            i16 LE    云台当前 yaw   × 1000 [rad]（兜底冗余）
+ *  [19]  2     pitch          i16 LE    云台当前 pitch × 1000 [rad]（兜底冗余）
+ *  [21]  2     yaw_vel        i16 LE    yaw 角速度   × 1000 [rad/s]
+ *  [23]  2     pitch_vel      i16 LE    pitch 角速度 × 1000 [rad/s]
  *  [25]  2     crc16          u16 LE    CRC16-CCITT（覆盖 [0]~[24]）
  *  [27]  1     FRAME_TAIL     u8        0x0D，帧尾
  *
@@ -94,9 +94,20 @@ inline constexpr std::size_t DOWN_CRC_LEN = 12U;
 inline constexpr uint8_t UP_HEAD_1 = 0xFFU;       ///< 上行帧头第二字节
 inline constexpr uint8_t UP_PAYLOAD_LEN = 0x16U;  ///< 上行 payload 固定长度 = 22
 inline constexpr std::size_t UP_FRAME_LEN = 28U;  ///< 上行总帧长（字节）
+inline constexpr uint8_t UP_COLOR_RED = 0U;       ///< 红方（协议定义）
+inline constexpr uint8_t UP_COLOR_BLUE = 1U;      ///< 蓝方（协议定义）
 
 /// CRC16 覆盖范围：[0]..[24]（不含 CRC 字节本身和帧尾）
 inline constexpr std::size_t UP_CRC_LEN = 25U;
+
+/**
+ * @brief 将上行 color 字段归一到协议定义范围（0/1）
+ *
+ * 非法值统一按 RED(0) 处理，避免上层出现未定义分支。
+ */
+[[nodiscard]] inline uint8_t NormalizeUpColor(uint8_t color) noexcept {
+  return (color == UP_COLOR_BLUE) ? UP_COLOR_BLUE : UP_COLOR_RED;
+}
 
 // ── 模式枚举 ─────────────────────────────────────────────────────────────────
 
@@ -148,10 +159,10 @@ struct UpFrame {
   int16_t q_x{0};           ///< 四元数 x × 10000
   int16_t q_y{0};           ///< 四元数 y × 10000
   int16_t q_z{0};           ///< 四元数 z × 10000
-  int16_t yaw{0};           ///< 云台当前 yaw   × 10000 [rad]
-  int16_t pitch{0};         ///< 云台当前 pitch × 10000 [rad]
-  int16_t yaw_vel{0};       ///< yaw 角速度   × 10000 [rad/s]
-  int16_t pitch_vel{0};     ///< pitch 角速度 × 10000 [rad/s]
+  int16_t yaw{0};           ///< 云台当前 yaw   × 1000 [rad]
+  int16_t pitch{0};         ///< 云台当前 pitch × 1000 [rad]
+  int16_t yaw_vel{0};       ///< yaw 角速度   × 1000 [rad/s]
+  int16_t pitch_vel{0};     ///< pitch 角速度 × 1000 [rad/s]
 };
 
 // ── CRC16-CCITT ───────────────────────────────────────────────────────────────
@@ -193,7 +204,7 @@ inline void DecodeUpFrame(const uint8_t* frame, UpFrame* out) {
   }
 
   out->seq = frame[3];
-  out->color = frame[4];
+  out->color = NormalizeUpColor(frame[4]);
   out->mode = static_cast<UpMode>(frame[5]);
   out->robot_id = static_cast<RobotId>(frame[6]);
   out->bullet_speed = static_cast<int16_t>(static_cast<uint16_t>(frame[7]) |

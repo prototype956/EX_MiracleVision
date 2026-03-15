@@ -113,9 +113,10 @@ void UpdateRuntimeStateFromUpFrame(const mv::protocol::UpFrame& up_frame,
     runtime_state.bullet_speed = static_cast<float>(up_frame.bullet_speed) * 0.01F;
   }
 
-  if (up_frame.color == 0U) {
+  const uint8_t NORMALIZED_COLOR = mv::protocol::NormalizeUpColor(up_frame.color);
+  if (NORMALIZED_COLOR == mv::protocol::UP_COLOR_RED) {
     runtime_state.enemy_color = mv::ArmorColor::BLUE;
-  } else if (up_frame.color == 1U) {
+  } else if (NORMALIZED_COLOR == mv::protocol::UP_COLOR_BLUE) {
     runtime_state.enemy_color = mv::ArmorColor::RED;
   }
 
@@ -129,6 +130,7 @@ void UpdateRuntimeStateFromUpFrame(const mv::protocol::UpFrame& up_frame,
 // ============================================================================
 
 // NOLINTBEGIN(readability-function-cognitive-complexity,readability-function-size,readability-identifier-naming)
+// NOLINTNEXTLINE(readability-function-cognitive-complexity,readability-function-size)
 int main() {
   std::signal(SIGINT, SigIntHandler);
 
@@ -278,6 +280,9 @@ int main() {
     // 弹速热更新节流（每 60 帧更新一次，避免频繁重初始化 RmShooter）
     float last_injected_speed = rt_state.bullet_speed;
     uint64_t last_speed_frame = 0;
+    std::chrono::steady_clock::time_point last_serial_ok_time{};
+    bool has_serial_ok_time = false;
+    constexpr auto SERIAL_LIVE_TIMEOUT = std::chrono::milliseconds(120);
 
     std::cout << "\n[real-debug-vision] 已就绪：\n"
               << "  Foxglove Studio → ws://localhost:" << FOXGLOVE_PORT << "\n"
@@ -316,17 +321,21 @@ int main() {
         std::array<uint8_t, RX_BUFFER_SIZE> rx_buffer{};
         std::size_t received = 0;
         if (serial.Recv(rx_buffer.data(), rx_buffer.size(), received) && received > 0) {
-          mv::protocol::UpFrame up_frame{};
-          const bool PARSE_OK =
-              mv::protocol::TryParseUpFrame(rx_buffer.data(), received, &up_frame);
-          serial_viz.OnRxData(rx_buffer.data(), received, PARSE_OK ? &up_frame : nullptr, PARSE_OK);
-          if (PARSE_OK) {
-            UpdateRuntimeStateFromUpFrame(up_frame, rt_state);
+          const auto FEED_RESULT = serial_viz.FeedBytes(rx_buffer.data(), received);
+          if (FEED_RESULT.parsed_any) {
+            UpdateRuntimeStateFromUpFrame(FEED_RESULT.latest_frame, rt_state);
+            last_serial_ok_time = std::chrono::steady_clock::now();
+            has_serial_ok_time = true;
             // 四元数注入 EKF（每帧必须在 Predict() 前调用）
             predictor.SetGimbalOrientation(rt_state.gimbal_quat);
-          } else {
-            rt_state.serial_alive = false;
           }
+        }
+
+        if (has_serial_ok_time) {
+          const auto NOW = std::chrono::steady_clock::now();
+          rt_state.serial_alive = (NOW - last_serial_ok_time) <= SERIAL_LIVE_TIMEOUT;
+        } else {
+          rt_state.serial_alive = false;
         }
 
         // 弹速热更新：每 60 帧（约 2s）同步一次，避免频繁重初始化
@@ -341,6 +350,9 @@ int main() {
           last_injected_speed = rt_state.bullet_speed;
           last_speed_frame = frame_idx;
         }
+      }
+      if (!serial.IsOpen()) {
+        rt_state.serial_alive = false;
       }
 
       // ── Step 3: 抓帧 ──────────────────────────────────────────────────────
