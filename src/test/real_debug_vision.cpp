@@ -23,7 +23,14 @@
  *     enemy_color / ekf.* / voter.* （字段与 predict_voter_test 完全一致）
  *
  * 【配置来源】
- *   运行参数统一从 configs/vision.yaml 读取：
+ *   运行参数统一从基础配置 + 可选覆盖配置合并得到：
+ *   - 默认基础配置：configs/vision.yaml
+ *   - 默认调试覆盖：configs/debug/debug_override.yaml（若存在则自动叠加）
+ *   - 也可通过 --config <yaml> 指定当前车/兵种的配置文件
+ *
+ *   程序退出时，会把当前热调后的持久化参数回写到本次实际使用的目标 YAML。
+ *
+ *   合并后的字段来源包括：
  *   - auto_aim.enemy_color
  *   - debug.foxglove.port
  *   - serial.* / camera.* 等硬件参数
@@ -52,10 +59,14 @@
 #include "modules/pnp_solver/pnp_solver.hpp"
 #include "modules/rm_shooter/rm_shooter.hpp"
 #include "tool/debug/metrics_tracker.hpp"
+#include "tool/debug/pnp_param_manager.hpp"
+#include "tool/debug/shooter_param_manager.hpp"
 #include "tool/debug/terminal_hud.hpp"
 #include "tool/foxglove/foxglove_sink.hpp"
 // PredictParamManager 复用离线调试的参数管理（双向 Foxglove 同步）
 #include "tool/debug/predict_param_manager.hpp"
+// ArmorDetectorParamManager 装甲检测器参数热调管理
+#include "tool/debug/armor_param_manager.hpp"
 #include "tool/foxglove/detail/serial_visualizer.hpp"
 
 #include <array>
@@ -63,7 +74,10 @@
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -83,6 +97,103 @@ std::atomic<bool>& QuitFlag() {
 extern "C" void SigIntHandler(int /*sig*/) noexcept {
   QuitFlag().store(true, std::memory_order_relaxed);
 }
+
+struct CliArgs {
+  std::string base_config_path{CONFIG_FILE_PATH "/vision.yaml"};
+  std::string profile_config_path;
+  std::string save_target_path{CONFIG_FILE_PATH "/vision.yaml"};
+};
+
+void MergeYamlNode(YAML::Node& dest, const YAML::Node& from) {
+  if (!from || from.IsNull()) {
+    return;
+  }
+  if (!from.IsMap()) {
+    dest = YAML::Clone(from);
+    return;
+  }
+  if (!dest || !dest.IsMap()) {
+    dest = YAML::Node(YAML::NodeType::Map);
+  }
+
+  for (const auto& item : from) {
+    const auto KEY = item.first.as<std::string>();
+    if (dest[KEY] && dest[KEY].IsMap() && item.second.IsMap()) {
+      YAML::Node child = dest[KEY];
+      MergeYamlNode(child, item.second);
+    } else {
+      dest[KEY] = YAML::Clone(item.second);
+    }
+  }
+}
+
+CliArgs ParseCliArgs(int argc, char** argv) {
+  CliArgs args;
+  const auto DEFAULT_PROFILE = std::string(CONFIG_FILE_PATH) + "/debug/debug_override.yaml";
+  if (std::filesystem::exists(DEFAULT_PROFILE)) {
+    args.profile_config_path = DEFAULT_PROFILE;
+    args.save_target_path = DEFAULT_PROFILE;
+  }
+
+  bool has_profile_arg = false;
+  for (int i = 1; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "-c" || arg == "--config") {
+      if (i + 1 >= argc) {
+        throw std::invalid_argument("--config 需要跟一个 YAML 文件路径");
+      }
+      args.profile_config_path = argv[++i];
+      args.save_target_path = args.profile_config_path;
+      has_profile_arg = true;
+      continue;
+    }
+    if (arg == "-h" || arg == "--help") {
+      throw std::invalid_argument(
+          "用法: mv-real-debug-vision [--config <yaml>]\n"
+          "  默认基础配置: src/config/vision.yaml\n"
+          "  默认调试覆盖: src/config/debug/debug_override.yaml（若存在则自动叠加）\n"
+          "  --config 可指定当前车/兵种 YAML，程序退出时会回写到该文件");
+    }
+    if (!has_profile_arg) {
+      args.profile_config_path = arg;
+      args.save_target_path = arg;
+      has_profile_arg = true;
+      continue;
+    }
+    throw std::invalid_argument("仅支持一个位置参数 YAML 文件，或使用 --config <yaml>");
+  }
+
+  if (args.profile_config_path == args.base_config_path) {
+    args.profile_config_path.clear();
+    args.save_target_path = args.base_config_path;
+  }
+  return args;
+}
+
+YAML::Node LoadMergedConfigRoot(const CliArgs& args) {
+  YAML::Node root = YAML::LoadFile(args.base_config_path);
+  if (!args.profile_config_path.empty()) {
+    MergeYamlNode(root, YAML::LoadFile(args.profile_config_path));
+  }
+  return root;
+}
+
+bool SaveMergedConfigRoot(const YAML::Node& root, const std::string& yaml_path) {
+  std::filesystem::path output_path(yaml_path);
+  if (!output_path.parent_path().empty()) {
+    std::filesystem::create_directories(output_path.parent_path());
+  }
+
+  std::ofstream ofs(yaml_path);
+  if (!ofs.is_open()) {
+    return false;
+  }
+  ofs << root;
+  return true;
+}
+
+// ── 弧度转角度常数（常量名符合 Google Style Guide）─────────────────────
+constexpr double RAD_TO_DEG = 57.295779513082323;
 
 // ============================================================================
 // Module 2: 上行帧解析 + 运行时共享状态
@@ -131,10 +242,12 @@ void UpdateRuntimeStateFromUpFrame(const mv::protocol::UpFrame& up_frame,
 
 // NOLINTBEGIN(readability-function-cognitive-complexity,readability-function-size,readability-identifier-naming)
 // NOLINTNEXTLINE(readability-function-cognitive-complexity,readability-function-size)
-int main() {
+int main(int argc, char** argv) {
   std::signal(SIGINT, SigIntHandler);
 
   try {
+    CliArgs cli_args = ParseCliArgs(argc, argv);
+
     // ── 日志初始化 ─────────────────────────────────────────────────────────
     // 控制台仅 info 及以上，避免 debug 消息滚动破坏 TerminalHUD 固定行；
     // 文件写入 trace 级别，保留完整记录供复盘。
@@ -142,7 +255,10 @@ int main() {
 
     // ── 加载配置文件 ────────────────────────────────────────────────────────
     auto& cfg = mv::ConfigManager::Instance();
-    cfg.Load(CONFIG_FILE_PATH "/vision.yaml");
+    cfg.Load(cli_args.base_config_path);
+    if (!cli_args.profile_config_path.empty()) {
+      cfg.Load(cli_args.profile_config_path);
+    }
 
     const auto ENEMY_COLOR_NAME = cfg.Get<std::string>("auto_aim.enemy_color", "red");
     const mv::ArmorColor CONFIG_ENEMY_COLOR =
@@ -150,6 +266,11 @@ int main() {
     const uint16_t FOXGLOVE_PORT = static_cast<uint16_t>(cfg.Get<int>("debug.foxglove.port", 8765));
 
     MV_LOG_INFO("real-debug", "══════════ mv-real-debug-vision 启动 ══════════");
+    MV_LOG_INFO("real-debug", "基础配置: {}", cli_args.base_config_path);
+    if (!cli_args.profile_config_path.empty()) {
+      MV_LOG_INFO("real-debug", "叠加配置: {}", cli_args.profile_config_path);
+    }
+    MV_LOG_INFO("real-debug", "退出回写目标: {}", cli_args.save_target_path);
     MV_LOG_INFO("real-debug", "Foxglove 端口: {}  初始颜色: {}", FOXGLOVE_PORT,
                 CONFIG_ENEMY_COLOR == mv::ArmorColor::BLUE ? "BLUE" : "RED");
 
@@ -159,6 +280,12 @@ int main() {
 
     YAML::Node root_cfg = cfg.Subtree();
     param_manager.InjectParamsToYaml(root_cfg);
+    mv::tool::PnpParamManager pnp_param_mgr;
+    pnp_param_mgr.LoadFromYaml(root_cfg);
+    pnp_param_mgr.InjectParamsToYaml(root_cfg);
+    mv::tool::ShooterParamManager shooter_param_mgr;
+    shooter_param_mgr.LoadFromYaml(root_cfg);
+    shooter_param_mgr.InjectParamsToYaml(root_cfg);
 
     // ── 创建算法模块 ─────────────────────────────────────────────────────────
     mv::modules::BasicArmorDetector detector;
@@ -171,6 +298,11 @@ int main() {
       MV_LOG_ERROR("real-debug", "检测器/解算器初始化失败，退出");
       return EXIT_FAILURE;
     }
+    detector.EnableDebug(true);
+
+    // ── 装甲检测器参数管理器（参数热调 + 写回）──────────────────────────────────
+    mv::tool::ArmorDetectorParamManager armor_param_mgr(&detector);
+
     if (!predictor.Init(root_cfg)) {
       MV_LOG_ERROR("real-debug", "EkfPredictor 初始化失败，退出");
       return EXIT_FAILURE;
@@ -229,9 +361,23 @@ int main() {
     sink.Start();
     MV_LOG_INFO("real-debug", "Foxglove 服务已启动 (ws://0.0.0.0:{})", FOXGLOVE_PORT);
 
-    // 注册参数双向同步：Foxglove 端修改参数时触发 EKF/Voter 重初始化
-    param_manager.Register(sink);
+    // 统一参数分发：FoxgloveSink 仅支持单回调，按模块路由到各参数管理器。
+    sink.SetParameterCallback(
+        [&](const std::string& name, const nlohmann::json& /*raw*/) {
+          const bool HANDLED_PREDICT = param_manager.HandleParameter(sink, name);
+          const bool HANDLED_ARMOR = armor_param_mgr.HandleParameter(sink, name);
+          const bool HANDLED_PNP = pnp_param_mgr.HandleParameter(sink, name);
+          const bool HANDLED_SHOOTER = shooter_param_mgr.HandleParameter(sink, name);
+          if (!HANDLED_PREDICT && !HANDLED_ARMOR && !HANDLED_PNP && !HANDLED_SHOOTER) {
+            MV_LOG_DEBUG("real-debug", "未处理的 Foxglove 参数: {}", name);
+          }
+        });
+
     param_manager.PushToFoxglove(sink);
+    armor_param_mgr.PushToFoxglove(sink);
+    pnp_param_mgr.PushToFoxglove(sink);
+    shooter_param_mgr.PushToFoxglove(sink);
+    MV_LOG_INFO("real-debug", "检测器 / PnP / 预测器 / Voter / Shooter 参数热调已启用");
 
     // 发布静态 TF：gimbal → camera（外参固定，只发一次）
     {
@@ -296,22 +442,52 @@ int main() {
 
     while (!QuitFlag().load(std::memory_order_relaxed)) {
       // ── Step 1: 参数热更新（Foxglove 端修改参数时触发）─────────────────────
-      if (param_manager.ConsumeReinitEkf()) {
+      const bool REINIT_EKF = param_manager.ConsumeReinitEkf();
+      const bool REINIT_VOTER = param_manager.ConsumeReinitVoter();
+      if (REINIT_EKF || REINIT_VOTER) {
         param_manager.InjectParamsToYaml(root_cfg);
-        predictor.Reset();
-        voter.Reset();
-        roi_mgr.Reset();
+        if (REINIT_EKF) {
+          predictor.Reset();
+          roi_mgr.Reset();
 
-        if (!predictor.Init(root_cfg)) {
-          MV_LOG_WARN("real-debug", "EkfPredictor 重初始化失败，跳过本次");
-          continue;
+          if (!predictor.Init(root_cfg)) {
+            MV_LOG_WARN("real-debug", "EkfPredictor 重初始化失败，跳过本次");
+            continue;
+          }
         }
-        if (!voter.Init(root_cfg)) {
-          MV_LOG_WARN("real-debug", "CooldownVoter 重初始化失败，跳过本次");
-          continue;
+
+        if (REINIT_VOTER) {
+          voter.Reset();
+          if (!voter.Init(root_cfg)) {
+            MV_LOG_WARN("real-debug", "CooldownVoter 重初始化失败，跳过本次");
+            continue;
+          }
         }
-        MV_LOG_INFO("real-debug", "EkfPredictor + CooldownVoter 参数已热更新");
+
+        MV_LOG_INFO("real-debug", "预测 / 决策参数已热更新 (ekf={} voter={})", REINIT_EKF,
+                    REINIT_VOTER);
       }
+
+      if (shooter_param_mgr.ConsumeReinit()) {
+        shooter_param_mgr.InjectParamsToYaml(root_cfg);
+        if (!shooter.Init(root_cfg)) {
+          MV_LOG_WARN("real-debug", "RmShooter 重初始化失败，跳过本次");
+          continue;
+        }
+        shooter_param_mgr.PushToFoxglove(sink);
+        MV_LOG_INFO("real-debug", "Shooter 参数已热更新");
+      }
+
+      if (pnp_param_mgr.ConsumeReinit()) {
+        pnp_param_mgr.InjectParamsToYaml(root_cfg);
+        if (!solver.Init(root_cfg)) {
+          MV_LOG_WARN("real-debug", "PnpSolver 重初始化失败，跳过本次");
+          continue;
+        }
+        pnp_param_mgr.PushToFoxglove(sink);
+        MV_LOG_INFO("real-debug", "PnpSolver 参数已热更新");
+      }
+
       // 从参数管理器同步敌方颜色（Foxglove 端可修改）
       rt_state.enemy_color = param_manager.State().enemy_color;
 
@@ -343,8 +519,10 @@ int main() {
         if (frame_idx - last_speed_frame >= 60 && BULLET_SPEED_DIFF > 0.5F) {
           param_manager.State().ekf_bullet_speed = static_cast<double>(rt_state.bullet_speed);
           param_manager.InjectParamsToYaml(root_cfg);
-          root_cfg["auto_aim"]["shooter"]["bullet_speed"] = rt_state.bullet_speed;
+          shooter_param_mgr.SetBulletSpeed(rt_state.bullet_speed, false);
+          shooter_param_mgr.InjectParamsToYaml(root_cfg);
           if (shooter.Init(root_cfg)) {
+            shooter_param_mgr.PushToFoxglove(sink);
             MV_LOG_INFO("real-debug", "弹速更新: {:.1f} m/s", rt_state.bullet_speed);
           }
           last_injected_speed = rt_state.bullet_speed;
@@ -422,6 +600,16 @@ int main() {
         }
 
         sink.PublishImage(frame, "camera/raw", "camera", TIMESTAMP_NS);
+        const auto& detector_debug_data = detector.GetDebugData();
+        const auto& detector_params = detector.GetParams();
+        mv::tool::FoxgloveSink::TraditionalVisionLightVisParams light_vis_params;
+        light_vis_params.min_light_ratio = detector_params.min_light_ratio;
+        light_vis_params.max_light_ratio = detector_params.max_light_ratio;
+        light_vis_params.max_light_angle = detector_params.max_light_angle;
+        light_vis_params.min_area = detector_params.min_area;
+        sink.PublishTraditionalVisionDebug(detector_debug_data.diff, detector_debug_data.binary,
+                                           roi_mgr.GetRoiRect(), frame.size(), frame,
+                                           light_vis_params, TIMESTAMP_NS);
         sink.PublishDetections(dets, TIMESTAMP_NS);
         sink.PublishPnpResult(solved_dets, frame, TIMESTAMP_NS);
         sink.PublishGimbalControl(ctrl, TIMESTAMP_NS);
@@ -474,9 +662,40 @@ int main() {
         hud.Update(metrics.CurrentFps(), dets, &ctrl, &node_metrics_list);
       }
 
+      // ── Step 11: Foxglove HUD 状态同步（按节流间隔推送）─────────────────────
+      if (frame_idx % fox_interval == 0) {
+        std::string enemy_color_display =
+            (rt_state.enemy_color == mv::ArmorColor::RED)    ? "red"
+            : (rt_state.enemy_color == mv::ArmorColor::BLUE) ? "blue"
+                                                             : "none";
+
+        sink.PublishHudStatus(metrics.CurrentFps(),           // fps
+                              static_cast<int>(dets.size()),  // detection_count
+                              ctrl.tracking,                  // tracking
+                              rt_state.serial_alive,          // serial_alive
+                              enemy_color_display,            // enemy_color
+                              ctrl.yaw * RAD_TO_DEG,          // target_yaw_deg
+                              ctrl.pitch * RAD_TO_DEG,        // target_pitch_deg
+                              ctrl.distance,                  // target_distance_m
+                              TIMESTAMP_NS                    // ts_ns
+        );
+      }
+
     }  // while (!QuitFlag)
 
     metrics.PrintStats();
+
+    YAML::Node save_root = LoadMergedConfigRoot(cli_args);
+    param_manager.InjectParamsToYaml(save_root);
+    armor_param_mgr.InjectParamsToYaml(save_root);
+    pnp_param_mgr.InjectParamsToYaml(save_root);
+    shooter_param_mgr.InjectParamsToYaml(save_root);
+    if (SaveMergedConfigRoot(save_root, cli_args.save_target_path)) {
+      MV_LOG_INFO("real-debug", "已将热调参数写回配置文件: {}", cli_args.save_target_path);
+    } else {
+      MV_LOG_WARN("real-debug", "回写配置文件失败: {}", cli_args.save_target_path);
+    }
+
     MV_LOG_INFO("real-debug", "正常退出");
 
   } catch (const std::exception& e) {

@@ -39,91 +39,110 @@ bool PredictParamManager::JsonToBool(const nlohmann::json& v, bool fallback) noe
 
 void PredictParamManager::Register(FoxgloveSink& sink) {
   sink.SetParameterCallback([this, &sink](const std::string& name, const nlohmann::json& /*raw*/) {
-    const auto val = sink.GetParameter(name);
-    if (val.is_null())
-      return;
-
-    std::lock_guard<std::mutex> lk(mutex_);
-
-    // ── 通用参数 ──────────────────────────────────────────────────────────
-    if (name == "enemy_color" && val.is_string()) {
-      state_.enemy_color =
-          (val.get<std::string>() == "blue") ? mv::ArmorColor::BLUE : mv::ArmorColor::RED;
-      return;  // 颜色切换不需要重初始化
-    }
-    if (name == "loop_video") {
-      state_.loop_video = JsonToBool(val, state_.loop_video);
-      return;
-    }
-    if (name == "playback_fps") {
-      state_.playback_fps = JsonToDouble(val, state_.playback_fps);
-      return;
-    }
-
-    // ── EKF 参数（任一变动 → 重初始化预测器）─────────────────────────────
-    bool ekf_changed = false;
-    if (name == "ekf.min_detect_count") {
-      state_.ekf_min_detect_count = JsonToInt(val, state_.ekf_min_detect_count);
-      ekf_changed = true;
-    } else if (name == "ekf.max_detecting_lost_count") {
-      state_.ekf_max_detecting_lost_count = JsonToInt(val, state_.ekf_max_detecting_lost_count);
-      ekf_changed = true;
-    } else if (name == "ekf.max_temp_lost_count") {
-      state_.ekf_max_temp_lost_count = JsonToInt(val, state_.ekf_max_temp_lost_count);
-      ekf_changed = true;
-    } else if (name == "ekf.process_noise_pos") {
-      state_.ekf_process_noise_pos = JsonToDouble(val, state_.ekf_process_noise_pos);
-      ekf_changed = true;
-    } else if (name == "ekf.process_noise_ang") {
-      state_.ekf_process_noise_ang = JsonToDouble(val, state_.ekf_process_noise_ang);
-      ekf_changed = true;
-    } else if (name == "ekf.yaw_offset_deg") {
-      state_.ekf_yaw_offset_deg = JsonToDouble(val, state_.ekf_yaw_offset_deg);
-      ekf_changed = true;
-    } else if (name == "ekf.pitch_offset_deg") {
-      state_.ekf_pitch_offset_deg = JsonToDouble(val, state_.ekf_pitch_offset_deg);
-      ekf_changed = true;
-    } else if (name == "ekf.low_speed_delay_ms") {
-      state_.ekf_low_speed_delay_ms = JsonToDouble(val, state_.ekf_low_speed_delay_ms);
-      ekf_changed = true;
-    } else if (name == "ekf.high_speed_delay_ms") {
-      state_.ekf_high_speed_delay_ms = JsonToDouble(val, state_.ekf_high_speed_delay_ms);
-      ekf_changed = true;
-    } else if (name == "ekf.bullet_speed") {
-      state_.ekf_bullet_speed = JsonToDouble(val, state_.ekf_bullet_speed);
-      ekf_changed = true;
-    }
-
-    // ── 模拟云台姿态（不重初始化 EKF，下帧通过 SetGimbalOrientation 生效）───
-    if (name == "sim.yaw_deg") {
-      state_.sim_yaw_deg = JsonToDouble(val, state_.sim_yaw_deg);
-    } else if (name == "sim.pitch_deg") {
-      state_.sim_pitch_deg = JsonToDouble(val, state_.sim_pitch_deg);
-    } else if (name == "sim.roll_deg") {
-      state_.sim_roll_deg = JsonToDouble(val, state_.sim_roll_deg);
-    }
-
-    // ── Voter 参数（任一变动 → 重初始化 Voter）────────────────────────────
-    bool voter_changed = false;
-    if (name == "voter.auto_fire") {
-      state_.voter_auto_fire = JsonToBool(val, state_.voter_auto_fire);
-      voter_changed = true;
-    } else if (name == "voter.min_lock_frames") {
-      state_.voter_min_lock_frames = JsonToInt(val, state_.voter_min_lock_frames);
-      voter_changed = true;
-    } else if (name == "voter.first_tolerance_rad") {
-      state_.voter_first_tolerance_rad = JsonToDouble(val, state_.voter_first_tolerance_rad);
-      voter_changed = true;
-    } else if (name == "voter.fire_tolerate_frames") {
-      state_.voter_fire_tolerate_frames = JsonToInt(val, state_.voter_fire_tolerate_frames);
-      voter_changed = true;
-    }
-
-    if (ekf_changed)
-      reinit_ekf_.store(true, std::memory_order_release);
-    if (voter_changed)
-      reinit_voter_.store(true, std::memory_order_release);
+    (void)HandleParameter(sink, name);
   });
+}
+
+bool PredictParamManager::HandleParameter(FoxgloveSink& sink, const std::string& name) {
+  const auto val = sink.GetParameter(name);
+  if (val.is_null()) {
+    return false;
+  }
+
+  std::lock_guard<std::mutex> lk(mutex_);
+
+  if (name == "enemy_color" && val.is_string()) {
+    state_.enemy_color =
+        (val.get<std::string>() == "blue") ? mv::ArmorColor::BLUE : mv::ArmorColor::RED;
+    return true;
+  }
+  if (name == "loop_video") {
+    state_.loop_video = JsonToBool(val, state_.loop_video);
+    return true;
+  }
+  if (name == "playback_fps") {
+    state_.playback_fps = JsonToDouble(val, state_.playback_fps);
+    return true;
+  }
+
+  bool ekf_changed = false;
+  bool voter_changed = false;
+  bool handled = false;
+
+  if (name == "ekf.min_detect_count") {
+    state_.ekf_min_detect_count = JsonToInt(val, state_.ekf_min_detect_count);
+    ekf_changed = true;
+    handled = true;
+  } else if (name == "ekf.max_detecting_lost_count") {
+    state_.ekf_max_detecting_lost_count = JsonToInt(val, state_.ekf_max_detecting_lost_count);
+    ekf_changed = true;
+    handled = true;
+  } else if (name == "ekf.max_temp_lost_count") {
+    state_.ekf_max_temp_lost_count = JsonToInt(val, state_.ekf_max_temp_lost_count);
+    ekf_changed = true;
+    handled = true;
+  } else if (name == "ekf.process_noise_pos") {
+    state_.ekf_process_noise_pos = JsonToDouble(val, state_.ekf_process_noise_pos);
+    ekf_changed = true;
+    handled = true;
+  } else if (name == "ekf.process_noise_ang") {
+    state_.ekf_process_noise_ang = JsonToDouble(val, state_.ekf_process_noise_ang);
+    ekf_changed = true;
+    handled = true;
+  } else if (name == "ekf.yaw_offset_deg") {
+    state_.ekf_yaw_offset_deg = JsonToDouble(val, state_.ekf_yaw_offset_deg);
+    ekf_changed = true;
+    handled = true;
+  } else if (name == "ekf.pitch_offset_deg") {
+    state_.ekf_pitch_offset_deg = JsonToDouble(val, state_.ekf_pitch_offset_deg);
+    ekf_changed = true;
+    handled = true;
+  } else if (name == "ekf.low_speed_delay_ms") {
+    state_.ekf_low_speed_delay_ms = JsonToDouble(val, state_.ekf_low_speed_delay_ms);
+    ekf_changed = true;
+    handled = true;
+  } else if (name == "ekf.high_speed_delay_ms") {
+    state_.ekf_high_speed_delay_ms = JsonToDouble(val, state_.ekf_high_speed_delay_ms);
+    ekf_changed = true;
+    handled = true;
+  } else if (name == "ekf.bullet_speed") {
+    state_.ekf_bullet_speed = JsonToDouble(val, state_.ekf_bullet_speed);
+    ekf_changed = true;
+    handled = true;
+  } else if (name == "sim.yaw_deg") {
+    state_.sim_yaw_deg = JsonToDouble(val, state_.sim_yaw_deg);
+    handled = true;
+  } else if (name == "sim.pitch_deg") {
+    state_.sim_pitch_deg = JsonToDouble(val, state_.sim_pitch_deg);
+    handled = true;
+  } else if (name == "sim.roll_deg") {
+    state_.sim_roll_deg = JsonToDouble(val, state_.sim_roll_deg);
+    handled = true;
+  } else if (name == "voter.auto_fire") {
+    state_.voter_auto_fire = JsonToBool(val, state_.voter_auto_fire);
+    voter_changed = true;
+    handled = true;
+  } else if (name == "voter.min_lock_frames") {
+    state_.voter_min_lock_frames = JsonToInt(val, state_.voter_min_lock_frames);
+    voter_changed = true;
+    handled = true;
+  } else if (name == "voter.first_tolerance_rad") {
+    state_.voter_first_tolerance_rad = JsonToDouble(val, state_.voter_first_tolerance_rad);
+    voter_changed = true;
+    handled = true;
+  } else if (name == "voter.fire_tolerate_frames") {
+    state_.voter_fire_tolerate_frames = JsonToInt(val, state_.voter_fire_tolerate_frames);
+    voter_changed = true;
+    handled = true;
+  }
+
+  if (ekf_changed) {
+    reinit_ekf_.store(true, std::memory_order_release);
+  }
+  if (voter_changed) {
+    reinit_voter_.store(true, std::memory_order_release);
+  }
+  return handled;
 }
 
 void PredictParamManager::PushToFoxglove(FoxgloveSink& sink) const {
@@ -163,6 +182,8 @@ void PredictParamManager::PushToFoxglove(FoxgloveSink& sink) const {
 
 void PredictParamManager::InjectParamsToYaml(YAML::Node& root) const {
   std::lock_guard<std::mutex> lk(mutex_);
+
+  root["auto_aim"]["enemy_color"] = (state_.enemy_color == mv::ArmorColor::BLUE) ? "blue" : "red";
 
   // ── EKF 预测器字段 ────────────────────────────────────────────────────────
   auto ekf = root["auto_aim"]["ekf_predictor"];

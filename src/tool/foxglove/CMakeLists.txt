@@ -12,6 +12,8 @@ file(GLOB_RECURSE FOXGLOVE_CPP_WRAPPERS "${CMAKE_SOURCE_DIR}/3rdparty/foxglove/s
 add_library(mv-tool-foxglove STATIC
     foxglove_sink.cpp
     detail/serial_visualizer.cpp
+    detail/traditional_vision_debug_publisher.cpp
+    detail/hud_status_publisher.cpp
     detail/image_publisher.cpp
     detail/detection_publisher.cpp
     detail/pnp_visualizer.cpp

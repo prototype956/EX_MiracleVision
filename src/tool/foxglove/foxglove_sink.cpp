@@ -27,12 +27,14 @@
 
 #include "tool/foxglove/detail/detection_publisher.hpp"
 #include "tool/foxglove/detail/gimbal_publisher.hpp"
+#include "tool/foxglove/detail/hud_status_publisher.hpp"
 #include "tool/foxglove/detail/image_publisher.hpp"
 #include "tool/foxglove/detail/pnp_visualizer.hpp"
 #include "tool/foxglove/detail/server_builder.hpp"
 #include "tool/foxglove/detail/tf_publisher.hpp"
 #include "tool/foxglove/detail/thread_monitor.hpp"
 #include "tool/foxglove/detail/tracking_visualizer.hpp"
+#include "tool/foxglove/detail/traditional_vision_debug_publisher.hpp"
 #include "tool/foxglove/detail/utils.hpp"
 
 #include <atomic>
@@ -67,6 +69,8 @@ struct FoxgloveSink::Impl {
   std::unique_ptr<detail::ImagePublisher> image_pub;
   std::unique_ptr<detail::DetectionPublisher> detection_pub;
   std::unique_ptr<detail::PnpVisualizer> pnp_viz;
+  std::unique_ptr<detail::TraditionalVisionDebugPublisher> tv_debug_pub;
+  std::unique_ptr<detail::HudStatusPublisher> hud_status_pub;
   std::unique_ptr<detail::TfPublisher> tf_pub;
   std::unique_ptr<detail::ThreadMonitor> thread_monitor;
   std::unique_ptr<detail::GimbalPublisher> gimbal_pub;
@@ -101,7 +105,7 @@ struct FoxgloveSink::Impl {
         .param_callback = param_callback,
         .server = server,
     };
-    auto options = detail::BuildServerOptions(cfg, ctx, std::move(cb_args));
+    auto options = detail::BuildServerOptions(cfg, ctx, cb_args);
 
     auto server_res = foxglove::WebSocketServer::create(std::move(options));
     if (!server_res.has_value()) {
@@ -111,11 +115,13 @@ struct FoxgloveSink::Impl {
     }
     server = std::make_unique<foxglove::WebSocketServer>(std::move(server_res.value()));
 
-    // 初始化七个子发布器（共享同一 Context）
+    // 初始化八个子发布器（共享同一 Context）
     image_pub = std::make_unique<detail::ImagePublisher>(ctx, cfg.use_jpeg, cfg.jpeg_quality,
                                                          cfg.publish_width, cfg.publish_height);
     detection_pub = std::make_unique<detail::DetectionPublisher>(ctx);
     pnp_viz = std::make_unique<detail::PnpVisualizer>(ctx);
+    tv_debug_pub = std::make_unique<detail::TraditionalVisionDebugPublisher>(ctx);
+    hud_status_pub = std::make_unique<detail::HudStatusPublisher>(ctx);
     pnp_viz->SetArmorDims(cfg.armor_small_half_w, cfg.armor_big_half_w, cfg.armor_half_h);
     tf_pub = std::make_unique<detail::TfPublisher>(ctx);
     thread_monitor = std::make_unique<detail::ThreadMonitor>(ctx);
@@ -129,7 +135,7 @@ struct FoxgloveSink::Impl {
 // ============================================================================
 
 FoxgloveSink::FoxgloveSink() : FoxgloveSink(Config{}) {}
-FoxgloveSink::FoxgloveSink(Config cfg) : impl_(std::make_unique<Impl>(cfg)) {}
+FoxgloveSink::FoxgloveSink(const Config& cfg) : impl_(std::make_unique<Impl>(cfg)) {}
 FoxgloveSink::~FoxgloveSink() = default;
 FoxgloveSink::FoxgloveSink(FoxgloveSink&&) noexcept = default;
 FoxgloveSink& FoxgloveSink::operator=(FoxgloveSink&&) noexcept = default;
@@ -139,6 +145,58 @@ void FoxgloveSink::Start() {
     impl_->is_running = true;
     spdlog::info("[FoxgloveSink] WebSocket server started on port {}", 8765);
   }
+}
+
+// ── 传统视觉调试图 ────────────────────────────────────────────────────────────
+
+void FoxgloveSink::PublishTraditionalVisionDebug(
+    const cv::Mat& diff, const cv::Mat& binary, const cv::Rect2i& roi_rect,
+    const cv::Size& frame_size, const cv::Mat& raw_frame,
+    const TraditionalVisionLightVisParams& light_vis_params, int64_t ts_ns) {
+  // 零客户端时跳过调试图发布
+  if (!impl_->HasClients()) {
+    return;
+  }
+  detail::TraditionalVisionDebugPublisher::LightVisParams publisher_light_params;
+  publisher_light_params.min_light_ratio = light_vis_params.min_light_ratio;
+  publisher_light_params.max_light_ratio = light_vis_params.max_light_ratio;
+  publisher_light_params.max_light_angle = light_vis_params.max_light_angle;
+  publisher_light_params.min_area = light_vis_params.min_area;
+
+  impl_->tv_debug_pub->Publish(diff, binary, roi_rect, frame_size, raw_frame,
+                               publisher_light_params, detail::ResolveTs(ts_ns));
+}
+
+// ── HUD 状态 JSON 同步 ────────────────────────────────────────────────────
+
+namespace {
+void PublishHudStatusHelper(detail::HudStatusPublisher* pub, double fps, int detection_count,
+                            bool tracking, bool serial_alive, const std::string& enemy_color,
+                            double target_yaw_deg, double target_pitch_deg,
+                            double target_distance_m, uint64_t timestamp_ns) {
+  detail::HudStatusPublisher::HudStatus status;
+  status.fps = fps;
+  status.detection_count = detection_count;
+  status.tracking = tracking;
+  status.serial_alive = serial_alive;
+  status.enemy_color = enemy_color;
+  status.target_yaw_deg = target_yaw_deg;
+  status.target_pitch_deg = target_pitch_deg;
+  status.target_distance_m = target_distance_m;
+  status.timestamp_us = timestamp_ns / 1000;  // 纳秒转微秒
+
+  pub->Publish(status, timestamp_ns);
+}
+}  // namespace
+
+void FoxgloveSink::PublishHudStatus(double fps, int detection_count, bool tracking,
+                                    bool serial_alive, const std::string& enemy_color,
+                                    double target_yaw_deg, double target_pitch_deg,
+                                    double target_distance_m, int64_t ts_ns) {
+  const uint64_t kTimestampNs = detail::ResolveTs(ts_ns);
+  PublishHudStatusHelper(impl_->hud_status_pub.get(), fps, detection_count, tracking, serial_alive,
+                         enemy_color, target_yaw_deg, target_pitch_deg, target_distance_m,
+                         kTimestampNs);
 }
 
 void FoxgloveSink::Stop() {
@@ -158,9 +216,10 @@ bool FoxgloveSink::HasClients() const noexcept {
 void FoxgloveSink::PublishImage(const cv::Mat& img, const std::string& topic,
                                 const std::string& frame_id, int64_t ts_ns) {
   // 零客户端时提前返回：图像 clone + memcpy(~1.5MB/帧) 会占用约 2ms，
-  // 在 120fps Pipeline 中累积为不可忽略的延迟，无接收方时完全没有意义。
-  if (!impl_->HasClients())
+  // 在 120fps Pipeline 中累积为不可忽甥的延迟，无接收方时完全没有意么。
+  if (!impl_->HasClients()) {
     return;
+  }
   impl_->image_pub->Publish(img, topic, frame_id, detail::ResolveTs(ts_ns));
 }
 
@@ -183,8 +242,8 @@ void FoxgloveSink::PublishPnpResult(const std::vector<mv::Detection>& dets, cons
 // ── TF 坐标系 ─────────────────────────────────────────────────────────────────
 
 void FoxgloveSink::PublishTransform(const std::string& parent, const std::string& child,
-                                    const Eigen::Matrix4d& T, int64_t ts_ns) {
-  impl_->tf_pub->Publish(parent, child, T, detail::ResolveTs(ts_ns));
+                                    const Eigen::Matrix4d& transform, int64_t ts_ns) {
+  impl_->tf_pub->Publish(parent, child, transform, detail::ResolveTs(ts_ns));
 }
 
 // ── 线程健康 ──────────────────────────────────────────────────────────────────
@@ -201,8 +260,8 @@ void FoxgloveSink::PublishGimbalControl(const mv::GimbalControl& ctrl, int64_t t
 
 // ── 参数双向调节 ──────────────────────────────────────────────────────────────
 
-void FoxgloveSink::SetParameterCallback(ParameterCallback cb) {
-  impl_->param_callback = std::move(cb);
+void FoxgloveSink::SetParameterCallback(ParameterCallback callback) {
+  impl_->param_callback = std::move(callback);
 }
 
 void FoxgloveSink::UpdateParameters(const nlohmann::json& params) {
@@ -245,23 +304,29 @@ void FoxgloveSink::UpdateParameters(const nlohmann::json& params) {
 
 nlohmann::json FoxgloveSink::GetParameter(const std::string& name) const {
   std::lock_guard<std::mutex> lock(impl_->param_mutex);
-  auto it = impl_->param_store.find(name);
-  if (it == impl_->param_store.end()) {
+  auto iterator = impl_->param_store.find(name);
+  if (iterator == impl_->param_store.end()) {
     return nullptr;
   }
-  const auto& p = it->second;
-  if (p.is<bool>())
-    return p.get<bool>();
-  if (p.is<int64_t>())
-    return p.get<int64_t>();
-  if (p.is<double>())
-    return p.get<double>();
-  if (p.is<std::string>())
-    return p.get<std::string>();
-  if (p.is<std::vector<double>>())
-    return p.get<std::vector<double>>();
-  if (p.is<std::vector<int64_t>>())
-    return p.get<std::vector<int64_t>>();
+  const auto& param = iterator->second;
+  if (param.is<bool>()) {
+    return param.get<bool>();
+  }
+  if (param.is<int64_t>()) {
+    return param.get<int64_t>();
+  }
+  if (param.is<double>()) {
+    return param.get<double>();
+  }
+  if (param.is<std::string>()) {
+    return param.get<std::string>();
+  }
+  if (param.is<std::vector<double>>()) {
+    return param.get<std::vector<double>>();
+  }
+  if (param.is<std::vector<int64_t>>()) {
+    return param.get<std::vector<int64_t>>();
+  }
   return nullptr;
 }
 
@@ -269,7 +334,7 @@ nlohmann::json FoxgloveSink::GetParameter(const std::string& name) const {
 
 void FoxgloveSink::PublishJson(const std::string& topic, const nlohmann::json& data,
                                int64_t ts_ns) {
-  const uint64_t ts = detail::ResolveTs(ts_ns);
+  const uint64_t timestamp_ns = detail::ResolveTs(ts_ns);
   std::lock_guard<std::mutex> lock(impl_->json_chs_mtx);
 
   if (impl_->json_chs.find(topic) == impl_->json_chs.end()) {
@@ -284,7 +349,7 @@ void FoxgloveSink::PublishJson(const std::string& topic, const nlohmann::json& d
 
   const std::string json_str = data.dump();
   impl_->json_chs.at(topic).log(reinterpret_cast<const std::byte*>(json_str.data()),
-                                json_str.size(), ts);
+                                json_str.size(), timestamp_ns);
 }
 
 // ── 预测跟踪 3D 可视化 ────────────────────────────────────────────────────────

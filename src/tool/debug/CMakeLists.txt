@@ -11,6 +11,9 @@ add_library(mv-tool-debug STATIC
     debug_session.cpp
     light_vis_painter.cpp
     predict_param_manager.cpp
+    armor_param_manager.cpp
+    shooter_param_manager.cpp
+    pnp_param_manager.cpp
 )
 
 target_include_directories(mv-tool-debug

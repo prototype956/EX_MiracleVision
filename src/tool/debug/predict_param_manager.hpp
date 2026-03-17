@@ -138,6 +138,12 @@ class PredictParamManager {
   void Register(FoxgloveSink& sink);
 
   /**
+   * @brief 处理单个 Foxglove 参数更新
+   * @return true 表示该参数由预测/投票参数管理器处理
+   */
+  [[nodiscard]] bool HandleParameter(FoxgloveSink& sink, const std::string& name);
+
+  /**
    * @brief 将当前 state_ 全量推送到 Foxglove 参数面板
    *
    * 在连接新客户端或参数批量更新后调用，确保面板显示与实际状态一致。

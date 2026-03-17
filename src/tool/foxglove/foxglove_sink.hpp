@@ -75,9 +75,9 @@ struct FoxgloveSinkConfig {
   /** @brief 小装甲板半宽，默认与 vision.yaml armor.small_half_w 一致 */
   double armor_small_half_w = 0.0675;
   /** @brief 大装甲板半宽，默认与 vision.yaml armor.big_half_w 一致 */
-  double armor_big_half_w   = 0.115;
+  double armor_big_half_w = 0.115;
   /** @brief 装甲板半高，大小装甲通用，默认与 vision.yaml armor.half_h 一致 */
-  double armor_half_h       = 0.0275;
+  double armor_half_h = 0.0275;
 };
 
 /**
@@ -89,6 +89,13 @@ class FoxgloveSink {
  public:
   // 为就地公开 API 和内部子模块使用
   using Config = FoxgloveSinkConfig;
+
+  struct TraditionalVisionLightVisParams {
+    float min_light_ratio{0.07F};
+    float max_light_ratio{0.95F};
+    float max_light_angle{40.0F};
+    float min_area{10.0F};
+  };
 
   // ── 线程健康指标（由 PipelineNode 填充并上报）─────────────────────────
 
@@ -108,8 +115,8 @@ class FoxgloveSink {
 
   // ── 生命周期 ──────────────────────────────────────────────────────────────
 
-  FoxgloveSink();                     ///< 使用默认配置（host=0.0.0.0, port=8765）
-  explicit FoxgloveSink(Config cfg);  ///< 使用自定义配置
+  FoxgloveSink();                            ///< 使用默认配置（host=0.0.0.0, port=8765）
+  explicit FoxgloveSink(const Config& cfg);  ///< 使用自定义配置
   ~FoxgloveSink();
 
   FoxgloveSink(const FoxgloveSink&) = delete;
@@ -179,6 +186,71 @@ class FoxgloveSink {
   void PublishPnpResult(const std::vector<mv::Detection>& dets, const cv::Mat& frame,
                         int64_t ts_ns = 0);
 
+  // ── 传统视觉调试图（第一阶段）────────────────────────────────────────────
+
+  /**
+   * @brief 发布传统视觉中间图（diff / binary / lights）到 Foxglove
+   *
+   * 发布 topic：
+   * - vision/debug/diff（RawImage/mono8）
+   * - vision/debug/binary（RawImage/mono8）
+   * - vision/debug/lights（RawImage/bgr8）
+   *
+   * 当检测器在 ROI 子图运行时，会按 roi_rect 自动还原到全图尺寸再发布。
+   *
+   * @param diff       双通道差分图（可为空）
+   * @param binary     形态学二值图（可为空）
+   * @param roi_rect   当前 ROI（全图坐标；area==0 表示全图）
+   * @param frame_size 全图尺寸
+   * @param raw_frame  当前原始彩色帧（用于绘制 lights 色码图）
+   * @param light_vis_params 灯条色码图阈值参数
+   * @param ts_ns      时间戳（纳秒，0 = 使用当前时间）
+   */
+  void PublishTraditionalVisionDebug(const cv::Mat& diff, const cv::Mat& binary,
+                                     const cv::Rect2i& roi_rect, const cv::Size& frame_size,
+                                     const cv::Mat& raw_frame,
+                                     const TraditionalVisionLightVisParams& light_vis_params,
+                                     int64_t ts_ns = 0);
+
+  // ── HUD 状态同步（TerminalHUD 远程观看）─────────────────────────────────
+
+  /**
+   * @brief 发布 HUD 状态到 Foxglove（FPS、检测数、跟踪、串口连接状态）
+   *
+   * 将实机终端 HUD 的关键状态同步到 Foxglove Studio，使远程观众能实时监测
+   * 算法性能指标与通信状态。
+   *
+   * Topic: hud/status（JSON）
+   * 内容示例：
+   * {
+   *   "timestamp_us": 1234567890,
+   *   "fps": 143.5,
+   *   "detection_count": 2,
+   *   "tracking": true,
+   *   "serial_alive": true,
+   *   "enemy_color": "blue",
+   *   "target_yaw_deg": -3.2,
+   *   "target_pitch_deg": 1.1,
+   *   "target_distance_m": 4.20
+   * }
+   *
+   * @note TerminalHUD 本身继续独立运行（文本输出），此接口仅发送数据到 Foxglove，
+   *       两者并行不冲突。
+   *
+   * @param fps              当前算法帧率
+   * @param detection_count  当前检测数（无检测时为 0）
+   * @param tracking         是否已锁定跟踪
+   * @param serial_alive     串口是否连接
+   * @param enemy_color      敌方颜色（"red" / "blue" / "none"）
+   * @param target_yaw_deg   目标云台 YAW（度）
+   * @param target_pitch_deg 目标云台 PITCH（度）
+   * @param target_distance_m 目标距离（米）
+   * @param ts_ns            时间戳（纳秒，0 = 使用当前时间）
+   */
+  void PublishHudStatus(double fps, int detection_count, bool tracking, bool serial_alive,
+                        const std::string& enemy_color, double target_yaw_deg,
+                        double target_pitch_deg, double target_distance_m, int64_t ts_ns = 0);
+
   // ── TF 坐标系 ─────────────────────────────────────────────────────────────
 
   /**
@@ -195,7 +267,7 @@ class FoxgloveSink {
    * @param ts_ns    时间戳（纳秒，0 = 使用当前时间）
    */
   void PublishTransform(const std::string& parent, const std::string& child,
-                        const Eigen::Matrix4d& T, int64_t ts_ns = 0);
+                        const Eigen::Matrix4d& transform, int64_t ts_ns = 0);
 
   // ── 线程健康监控 ──────────────────────────────────────────────────────────
 
@@ -256,7 +328,7 @@ class FoxgloveSink {
   // ── 参数双向调节 ──────────────────────────────────────────────────────────
 
   /** 注册参数修改回调（Foxglove 端修改参数时被调用）*/
-  void SetParameterCallback(ParameterCallback cb);
+  void SetParameterCallback(ParameterCallback callback);
 
   /**
    * @brief 向 Foxglove 推送当前参数快照（初始化或值变更时调用）
