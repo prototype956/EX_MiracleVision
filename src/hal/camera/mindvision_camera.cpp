@@ -124,7 +124,8 @@ bool MindVisionCamera::Open(const YAML::Node& config) {
     }
   }
 
-  impl_->channel = config["channel"].as<int>(3);
+  // channel 由 ISP 输出格式决定；读取该字段仅为兼容旧配置。
+  (void)config["channel"];
 
   CameraSdkInit(1);
 
@@ -142,6 +143,15 @@ bool MindVisionCamera::Open(const YAML::Node& config) {
   }
 
   CameraGetCapability(impl_->h_camera, &impl_->capability);
+
+  // 显式固定 ISP 输出格式，避免 SDK 默认格式与上层 BGR 假设不一致。
+  if (impl_->capability.sIspCapacity.bMonoSensor) {
+    impl_->channel = 1;
+    CameraSetIspOutFormat(impl_->h_camera, CAMERA_MEDIA_TYPE_MONO8);
+  } else {
+    impl_->channel = 3;
+    CameraSetIspOutFormat(impl_->h_camera, CAMERA_MEDIA_TYPE_BGR8);
+  }
 
   // 分配 RGB 缓冲区（大小取相机支持的最大分辨率，避免反复 realloc）
   std::size_t buf_size = static_cast<std::size_t>(impl_->capability.sResolutionRange.iHeightMax) *
