@@ -54,10 +54,10 @@
  *  [11]  2     q_x            i16 LE    云台姿态四元数 x × 10000
  *  [13]  2     q_y            i16 LE    云台姿态四元数 y × 10000
  *  [15]  2     q_z            i16 LE    云台姿态四元数 z × 10000
- *  [17]  2     yaw            i16 LE    云台当前 yaw   × 1000 [rad]（兜底冗余）
- *  [19]  2     pitch          i16 LE    云台当前 pitch × 1000 [rad]（兜底冗余）
- *  [21]  2     yaw_vel        i16 LE    yaw 角速度   × 1000 [rad/s]
- *  [23]  2     pitch_vel      i16 LE    pitch 角速度 × 1000 [rad/s]
+ *  [17]  2     yaw            i16 LE    云台当前 yaw   × 100 [rad]（兜底冗余）
+ *  [19]  2     pitch          i16 LE    云台当前 pitch × 100 [rad]（兜底冗余）
+ *  [21]  2     yaw_vel        i16 LE    yaw 角速度   × 100 [rad/s]
+ *  [23]  2     pitch_vel      i16 LE    pitch 角速度 × 100 [rad/s]
  *  [25]  2     crc16          u16 LE    CRC16-CCITT（覆盖 [0]~[24]）
  *  [27]  1     FRAME_TAIL     u8        0x0D，帧尾
  *
@@ -159,10 +159,10 @@ struct UpFrame {
   int16_t q_x{0};           ///< 四元数 x × 10000
   int16_t q_y{0};           ///< 四元数 y × 10000
   int16_t q_z{0};           ///< 四元数 z × 10000
-  int16_t yaw{0};           ///< 云台当前 yaw   × 1000 [rad]
-  int16_t pitch{0};         ///< 云台当前 pitch × 1000 [rad]
-  int16_t yaw_vel{0};       ///< yaw 角速度   × 1000 [rad/s]
-  int16_t pitch_vel{0};     ///< pitch 角速度 × 1000 [rad/s]
+  int16_t yaw{0};           ///< 云台当前 yaw   × 100 [rad]
+  int16_t pitch{0};         ///< 云台当前 pitch × 100 [rad]
+  int16_t yaw_vel{0};       ///< yaw 角速度   × 100 [rad/s]
+  int16_t pitch_vel{0};     ///< pitch 角速度 × 100 [rad/s]
 };
 
 // ── CRC16-CCITT ───────────────────────────────────────────────────────────────

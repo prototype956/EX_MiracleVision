@@ -15,10 +15,10 @@
  *   [11-12] q_x  i16 LE  四元数 x × 10000
  *   [13-14] q_y  i16 LE  四元数 y × 10000
  *   [15-16] q_z  i16 LE  四元数 z × 10000
- *   [17-18] yaw  i16 LE  云台 yaw   × 10000 [rad]（冗余兜底）
- *   [19-20] pit  i16 LE  云台 pitch × 10000 [rad]（冗余兜底）
- *   [21-22] ywv  i16 LE  yaw 角速度   × 10000 [rad/s]
- *   [23-24] ptv  i16 LE  pitch 角速度 × 10000 [rad/s]
+ *   [17-18] yaw  i16 LE  云台 yaw   × 100 [rad]（冗余兜底）
+ *   [19-20] pit  i16 LE  云台 pitch × 100 [rad]（冗余兜底）
+ *   [21-22] ywv  i16 LE  yaw 角速度   × 100 [rad/s]
+ *   [23-24] ptv  i16 LE  pitch 角速度 × 100 [rad/s]
  *   [25-26] crc16 u16 LE  CRC16-CCITT（覆盖 [0]~[24]）
  *   [27]   0x0D  帧尾
  *
@@ -221,10 +221,10 @@ void SerialNode::TryRecv() {
   state_.SetGimbalQuat(Eigen::Quaterniond(QUAT_W, QUAT_X, QUAT_Y, QUAT_Z));
 
   // [17-24] 欧拉角 yaw/pitch 及角速度（冗余兜底，暂不使用）
-  // read_i16(17) = yaw × 10000 [rad]
-  // read_i16(19) = pitch × 10000 [rad]
-  // read_i16(21) = yaw_vel × 10000 [rad/s]
-  // read_i16(23) = pitch_vel × 10000 [rad/s]
+  // read_i16(17) = yaw × 100 [rad]
+  // read_i16(19) = pitch × 100 [rad]
+  // read_i16(21) = yaw_vel × 100 [rad/s]
+  // read_i16(23) = pitch_vel × 100 [rad/s]
 }
 
 }  // namespace mv::pipeline
