@@ -5,8 +5,8 @@
 
 message(STATUS "    Configuring MindVision SDK...")
 
-# 创建 IMPORTED 库
-add_library(MVSDK SHARED IMPORTED)
+# 创建 IMPORTED 库（GLOBAL 使其可跨目录可见，供 src/hal/camera 检测 TARGET MVSDK）
+add_library(MVSDK SHARED IMPORTED GLOBAL)
 
 # 检测系统架构
 execute_process(
