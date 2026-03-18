@@ -151,6 +151,8 @@ GimbalControl EkfPredictor::Predict(const std::vector<Detection>& detections,
     impl_->last_track_target.is_tracking = false;
     impl_->last_track_target.tracker_state =
         std::string(detail::EkfTracker::StateName(impl_->tracker.GetState()));
+    impl_->last_track_target.tracker_lost_reason =
+      std::string(impl_->tracker.GetLastLostReasonName());
     impl_->last_track_target.armor_positions.clear();
     GimbalControl ctrl{};
     ctrl.tracking = false;
@@ -171,6 +173,7 @@ GimbalControl EkfPredictor::Predict(const std::vector<Detection>& detections,
   impl_->last_track_target.pitch_predicted = ctrl.pitch;
   impl_->last_track_target.tracker_state =
       std::string(detail::EkfTracker::StateName(impl_->tracker.GetState()));
+  impl_->last_track_target.tracker_lost_reason = "none";
   // position = 旋转中心（世界系，cx/cy/cz 分别在 x[0]/x[2]/x[4]）
   impl_->last_track_target.position = Eigen::Vector3d(x[0], x[2], x[4]);
   // velocity = 旋转中心速度（dcx/dcy/dcz 在 x[1]/x[3]/x[5]）

@@ -20,6 +20,7 @@
  *     min_armor_ratio: 1.0    # 装甲板宽高比下界（档板间距 / 平均灯条长）
  *     max_armor_ratio: 5.5    # 装甲板宽高比上界
  *     max_angle_diff:  8.0    # 两灯条角度之差上界（°）
+ *     min_tb_span_ratio: 0.65 # 上沿/下沿跨度一致性下界（抑制梯形误配）
  *     min_area:        10.0   # 灯条轮廓最小面积（px²，过滤噪点）
  * @endcode
  *
@@ -79,6 +80,7 @@ class BasicArmorDetector final : public IDetector {
     float min_armor_ratio{1.0F};   ///< 装甲宽高比下界
     float max_armor_ratio{5.5F};   ///< 装甲宽高比上界
     float max_angle_diff{8.0F};    ///< 两灯条倾斜角最大差值（°）
+    float min_tb_span_ratio{0.65F};  ///< 上沿/下沿跨度一致性下界
     float min_area{10.0F};         ///< 灯条轮廓最小面积（px²）
   };
 

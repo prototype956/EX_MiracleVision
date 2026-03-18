@@ -19,6 +19,7 @@ class PnpParamManager {
     float small_half_w{0.0675F};
     float big_half_w{0.115F};
     float half_h{0.0275F};
+    float max_reproj_error_px{12.0F};
     double t_camera_to_gimbal_x{0.0};
     double t_camera_to_gimbal_y{0.0};
     double t_camera_to_gimbal_z{0.0};

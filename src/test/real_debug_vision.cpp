@@ -79,6 +79,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <Eigen/Dense>
@@ -423,6 +424,14 @@ int main(int argc, char** argv) {
     uint64_t frame_idx = 0;
     (void)FOX_TARGET_FPS;  // 后续可用于动态调整 fox_interval
 
+    // 跟踪失锁统计：用于区分检测链路问题与 EKF 重置问题
+    std::unordered_map<std::string, uint64_t> lost_reason_counters;
+    uint64_t lost_total_events = 0;
+    uint64_t no_detection_frames = 0;
+    uint64_t unsolved_only_frames = 0;
+    uint64_t rejected_by_reproj_total = 0;
+    std::string prev_tracker_state = "lost";
+
     // 弹速热更新节流（每 60 帧更新一次，避免频繁重初始化 RmShooter）
     float last_injected_speed = rt_state.bullet_speed;
     uint64_t last_speed_frame = 0;
@@ -552,18 +561,38 @@ int main(int argc, char** argv) {
       for (auto& det : dets) {
         solver.Solve(det);
       }
-      // 过滤解算失败的检测（is_solved=false 的目标 EKF 无法使用）
+      // 过滤解算失败或重投影误差过大的检测，避免抖动角点污染 EKF。
+      const auto PNP_PARAMS = pnp_param_mgr.GetParams();
+      const double MAX_REPROJ_ERROR_PX = static_cast<double>(PNP_PARAMS.max_reproj_error_px);
       std::vector<mv::Detection> solved_dets;
       solved_dets.reserve(dets.size());
+      int rejected_by_reproj_this_frame = 0;
       for (const auto& det : dets) {
-        if (det.is_solved) {
+        if (det.is_solved && det.reproj_error <= MAX_REPROJ_ERROR_PX) {
           solved_dets.push_back(det);
+        } else if (det.is_solved) {
+          ++rejected_by_reproj_this_frame;
         }
       }
+      rejected_by_reproj_total += static_cast<uint64_t>(rejected_by_reproj_this_frame);
 
       // ── Step 6: EKF 预测 ──────────────────────────────────────────────────
       auto ctrl = predictor.Predict(solved_dets, FRAME_TIMESTAMP, rt_state.enemy_color);
       const auto TRACK_TARGET = predictor.GetTrackTarget();
+
+      if (dets.empty()) {
+        ++no_detection_frames;
+      }
+      if (!dets.empty() && solved_dets.empty()) {
+        ++unsolved_only_frames;
+      }
+      if (TRACK_TARGET.tracker_state == "lost" && prev_tracker_state != "lost") {
+        ++lost_total_events;
+        const std::string LOST_REASON =
+            TRACK_TARGET.tracker_lost_reason.empty() ? "unknown" : TRACK_TARGET.tracker_lost_reason;
+        ++lost_reason_counters[LOST_REASON];
+      }
+      prev_tracker_state = TRACK_TARGET.tracker_state;
 
       // ── Step 7: 开火决策 ──────────────────────────────────────────────────
       ctrl.fire = voter.Vote(TRACK_TARGET, ctrl);
@@ -607,9 +636,23 @@ int main(int argc, char** argv) {
         light_vis_params.max_light_ratio = detector_params.max_light_ratio;
         light_vis_params.max_light_angle = detector_params.max_light_angle;
         light_vis_params.min_area = detector_params.min_area;
+        light_vis_params.stabilize_diff_binary =
+          cfg.Get<bool>("debug.foxglove.stabilize_diff_binary", true);
         sink.PublishTraditionalVisionDebug(detector_debug_data.diff, detector_debug_data.binary,
                                            roi_mgr.GetRoiRect(), frame.size(), frame,
                                            light_vis_params, TIMESTAMP_NS);
+        {
+          const cv::Rect2i ROI_RECT = roi_mgr.GetRoiRect();
+          nlohmann::json roi_status_json;
+          roi_status_json["active"] = roi_mgr.IsActive();
+          roi_status_json["lost_count"] = roi_mgr.GetLostCount();
+          roi_status_json["x"] = ROI_RECT.x;
+          roi_status_json["y"] = ROI_RECT.y;
+          roi_status_json["width"] = ROI_RECT.width;
+          roi_status_json["height"] = ROI_RECT.height;
+          roi_status_json["area"] = ROI_RECT.area();
+          sink.PublishJson("vision/debug/roi_status", roi_status_json, TIMESTAMP_NS);
+        }
         sink.PublishDetections(dets, TIMESTAMP_NS);
         sink.PublishPnpResult(solved_dets, frame, TIMESTAMP_NS);
         sink.PublishGimbalControl(ctrl, TIMESTAMP_NS);
@@ -622,11 +665,28 @@ int main(int argc, char** argv) {
         nlohmann::json track_json;
         track_json["is_tracking"] = TRACK_TARGET.is_tracking;
         track_json["tracker_state"] = TRACK_TARGET.tracker_state;
+        track_json["tracker_lost_reason"] = TRACK_TARGET.tracker_lost_reason;
         track_json["yaw_predicted"] = TRACK_TARGET.yaw_predicted;
         track_json["pitch_predicted"] = TRACK_TARGET.pitch_predicted;
         track_json["velocity"] = {TRACK_TARGET.velocity.x(), TRACK_TARGET.velocity.y(),
                                   TRACK_TARGET.velocity.z()};
         sink.PublishJson("tracking/target_state", track_json, TIMESTAMP_NS);
+
+        nlohmann::json lost_stats_json;
+        lost_stats_json["tracker_state"] = TRACK_TARGET.tracker_state;
+        lost_stats_json["last_lost_reason"] = TRACK_TARGET.tracker_lost_reason;
+        lost_stats_json["lost_total_events"] = lost_total_events;
+        lost_stats_json["no_detection_frames"] = no_detection_frames;
+        lost_stats_json["unsolved_only_frames"] = unsolved_only_frames;
+        lost_stats_json["rejected_by_reproj_this_frame"] = rejected_by_reproj_this_frame;
+        lost_stats_json["rejected_by_reproj_total"] = rejected_by_reproj_total;
+        lost_stats_json["max_reproj_error_px"] = MAX_REPROJ_ERROR_PX;
+        nlohmann::json reason_counts = nlohmann::json::object();
+        for (const auto& [reason, count] : lost_reason_counters) {
+          reason_counts[reason] = count;
+        }
+        lost_stats_json["reason_counts"] = reason_counts;
+        sink.PublishJson("tracking/lost_stats", lost_stats_json, TIMESTAMP_NS);
 
         nlohmann::json voter_json;
         voter_json["fire"] = ctrl.fire;

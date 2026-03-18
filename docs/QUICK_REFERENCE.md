@@ -90,6 +90,41 @@ void Process(int input_value, bool enable_debug) {}
 
 ---
 
+## 🚗 实车 3 分钟调参 SOP（二阶段）
+
+适用场景：
+传统视觉出现梯形误框、tracker 周期性 lost、binary/diff 闪烁明显。
+
+关键面板：
+1. `vision/debug/diff`
+2. `vision/debug/binary`
+3. `vision/debug/roi`
+4. `vision/debug/roi_status`（Raw Message）
+5. `tracking/lost_stats`（Raw Message）
+
+关键参数：
+1. `debug.foxglove.stabilize_diff_binary`（建议保持 `true`）
+2. `armor.min_tb_span_ratio`（默认 `0.65`）
+3. `pnp.max_reproj_error_px`（默认 `12.0`）
+
+步骤：
+1. 先确认 `debug.foxglove.stabilize_diff_binary=true`，让 binary/diff 先稳定。
+2. 观察 `vision/debug/roi_status`：如果 `lost_count` 长时间递增，先回查曝光和阈值。
+3. 调 `armor.min_tb_span_ratio`：
+   `0.55 -> 0.65 -> 0.75`，逐步提高，目标是减少梯形误配但不明显漏检。
+4. 调 `pnp.max_reproj_error_px`：
+   `16 -> 12 -> 10`，逐步收紧，观察 `tracking/lost_stats` 中
+   `rejected_by_reproj_total` 与 `reason_counts.nis_diverged` 的平衡。
+5. 以 30 秒窗口观察：
+   `lost_total_events` 下降且 `rejected_by_reproj_this_frame` 不长期过高，即为可用配置。
+
+判定经验：
+1. `rejected_by_reproj_total` 增长很快且目标经常断：阈值过严，放宽到 `12~16`。
+2. `nis_diverged`/`temp_lost_timeout` 持续上升：阈值可适度收紧到 `8~12`。
+3. 梯形误框多但 `rejected_by_reproj` 低：优先提高 `armor.min_tb_span_ratio`。
+
+---
+
 ## 🔗 快速链接
 
 - 详细文档: `docs/CODE_STYLE_GUIDE.md`

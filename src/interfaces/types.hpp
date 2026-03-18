@@ -181,6 +181,7 @@ struct TrackTarget {
   double pitch_predicted{0.0};                        // 预测 pitch（rad）
 
   std::string tracker_state{"lost"};  // 跟踪器内部状态名
+  std::string tracker_lost_reason{"none"};  // 最近一次进入 LOST 的原因
 
   /**
    * @brief EKF 估计的所有装甲板空间位置（仅 EkfPredictor 填充）

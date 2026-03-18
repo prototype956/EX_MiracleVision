@@ -89,8 +89,22 @@ class EkfTracker {
   /** @brief 跟踪器内部状态枚举 */
   enum class State : uint8_t { LOST = 0, DETECTING, TRACKING, TEMP_LOST };
 
+  /** @brief 最近一次进入 LOST 的原因（用于调试统计） */
+  enum class LostReason : uint8_t {
+    NONE = 0,
+    MANUAL_RESET,
+    LARGE_DT,
+    DETECTING_TIMEOUT,
+    TEMP_LOST_TIMEOUT,
+    RADIUS_DIVERGED,
+    NIS_DIVERGED,
+  };
+
   /** @return 状态名字符串（日志/TrackTarget.tracker_state 输出用）*/
   static const char* StateName(State state) noexcept;
+
+  /** @return 丢失原因名字符串（日志/Foxglove 输出用） */
+  static const char* LostReasonName(LostReason reason) noexcept;
 
   // ── 构造 ─────────────────────────────────────────────────────────────
 
@@ -127,6 +141,14 @@ class EkfTracker {
   /** @return 当前跟踪器状态名字符串（供 TrackTarget.tracker_state 填充）*/
   [[nodiscard]] const char* GetStateName() const noexcept { return StateName(state_); }
 
+  /** @return 最近一次进入 LOST 的原因 */
+  [[nodiscard]] LostReason GetLastLostReason() const noexcept { return last_lost_reason_; }
+
+  /** @return 最近一次进入 LOST 的原因名字符串 */
+  [[nodiscard]] const char* GetLastLostReasonName() const noexcept {
+    return LostReasonName(last_lost_reason_);
+  }
+
   /** @return 当前跟踪目标（仅在 TRACKING / TEMP_LOST 时有效）*/
   [[nodiscard]] const std::optional<EkfTrackTarget>& CurrentTarget() const noexcept {
     return target_;
@@ -139,6 +161,7 @@ class EkfTracker {
 
  private:
   State state_{State::LOST};
+  LostReason last_lost_reason_{LostReason::NONE};
   std::optional<EkfTrackTarget> target_{};
 
   int detect_count_{0};          ///< 连续检测帧计数（DETECTING 阶段）
@@ -166,6 +189,9 @@ class EkfTracker {
 
   /** @brief 根据 found（本帧是否有匹配）驱动状态机转换 */
   void StateMachine(bool found);
+
+  /** @brief 以给定原因重置到 LOST */
+  void ResetWithReason(LostReason reason);
 };
 
 }  // namespace mv::modules::detail

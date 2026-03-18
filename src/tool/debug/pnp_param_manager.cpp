@@ -18,6 +18,12 @@ void PnpParamManager::LoadFromYaml(const YAML::Node& root) noexcept {
     params.half_h = armor["half_h"].as<float>(params.half_h);
   }
 
+  if (root && root["debug"] && root["debug"]["pnp_gate"]) {
+    const auto& pnp_gate = root["debug"]["pnp_gate"];
+    params.max_reproj_error_px =
+        pnp_gate["max_reproj_error_px"].as<float>(params.max_reproj_error_px);
+  }
+
   if (root && root["calibration"] && root["calibration"]["t_camera_to_gimbal"]) {
     const auto& translation_node = root["calibration"]["t_camera_to_gimbal"];
     try {
@@ -66,6 +72,8 @@ bool PnpParamManager::HandleParameter(FoxgloveSink& sink, const std::string& nam
     params.big_half_w = VALUE.get<float>();
   } else if (name == "pnp.half_h" && VALUE.is_number()) {
     params.half_h = VALUE.get<float>();
+  } else if (name == "pnp.max_reproj_error_px" && VALUE.is_number()) {
+    params.max_reproj_error_px = VALUE.get<float>();
   } else if (name == "pnp.t_camera_to_gimbal_x" && VALUE.is_number()) {
     params.t_camera_to_gimbal_x = VALUE.get<double>();
   } else if (name == "pnp.t_camera_to_gimbal_y" && VALUE.is_number()) {
@@ -86,6 +94,7 @@ void PnpParamManager::PushToFoxglove(FoxgloveSink& sink) const noexcept {
   sink.UpdateParameters({{"pnp.small_half_w", PARAMS.small_half_w},
                          {"pnp.big_half_w", PARAMS.big_half_w},
                          {"pnp.half_h", PARAMS.half_h},
+                         {"pnp.max_reproj_error_px", PARAMS.max_reproj_error_px},
                          {"pnp.t_camera_to_gimbal_x", PARAMS.t_camera_to_gimbal_x},
                          {"pnp.t_camera_to_gimbal_y", PARAMS.t_camera_to_gimbal_y},
                          {"pnp.t_camera_to_gimbal_z", PARAMS.t_camera_to_gimbal_z}});
@@ -98,6 +107,10 @@ void PnpParamManager::InjectParamsToYaml(YAML::Node& root) const {
   armor["small_half_w"] = PARAMS.small_half_w;
   armor["big_half_w"] = PARAMS.big_half_w;
   armor["half_h"] = PARAMS.half_h;
+
+  YAML::Node debug = root["debug"];
+  YAML::Node pnp_gate = debug["pnp_gate"];
+  pnp_gate["max_reproj_error_px"] = PARAMS.max_reproj_error_px;
 
   YAML::Node calibration = root["calibration"];
   calibration["t_camera_to_gimbal"] =

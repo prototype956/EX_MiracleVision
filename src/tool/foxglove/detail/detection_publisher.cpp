@@ -15,11 +15,39 @@
 
 #include "tool/foxglove/detail/utils.hpp"
 
+#include <array>
 #include <string>
 
+#include <opencv2/imgproc.hpp>
 #include <spdlog/spdlog.h>
 
 namespace mv::tool::detail {
+
+namespace {
+
+std::array<cv::Point2f, 4> StableRectCorners(const mv::Detection& det) {
+  std::array<cv::Point2f, 4> corners{};
+  std::vector<cv::Point2f> points;
+  points.reserve(4);
+  for (const auto& point : det.points) {
+    points.push_back(point);
+  }
+  const cv::RotatedRect rect = cv::minAreaRect(points);
+  rect.points(corners.data());
+  return corners;
+}
+
+cv::Point2f TopLeftByBounding(const std::array<cv::Point2f, 4>& corners) {
+  float min_x = corners[0].x;
+  float min_y = corners[0].y;
+  for (const auto& point : corners) {
+    min_x = std::min(min_x, point.x);
+    min_y = std::min(min_y, point.y);
+  }
+  return {min_x, min_y};
+}
+
+}  // namespace
 
 DetectionPublisher::DetectionPublisher(foxglove::Context ctx) : ctx_(std::move(ctx)) {}
 
@@ -56,17 +84,29 @@ void DetectionPublisher::Publish(const std::vector<mv::Detection>& dets, uint64_
 
     for (const auto& det : dets) {
       foxglove::schemas::Color box_color = ArmorColorToFox(det.color);
+      const auto stable_corners = StableRectCorners(det);
 
-      // 边框：LINE_LOOP（4 个角点）
+      // 显示层使用稳定矩形框，避免端点抖动时显示成梯形。
       foxglove::schemas::PointsAnnotation box;
       box.timestamp = ts;
       box.type = foxglove::schemas::PointsAnnotation::PointsAnnotationType::LINE_LOOP;
       box.thickness = 2.0;
       box.outline_color = box_color;
-      for (const auto& pt : det.points) {
-        box.points.push_back({static_cast<double>(pt.x), static_cast<double>(pt.y)});
+      for (const auto& point : stable_corners) {
+        box.points.push_back({static_cast<double>(point.x), static_cast<double>(point.y)});
       }
       annot_msg.points.push_back(std::move(box));
+
+      // 叠加原始角点，用于观察角点抖动，不影响稳定框观感。
+      foxglove::schemas::PointsAnnotation raw_corners;
+      raw_corners.timestamp = ts;
+      raw_corners.type = foxglove::schemas::PointsAnnotation::PointsAnnotationType::POINTS;
+      raw_corners.thickness = 3.0;
+      raw_corners.outline_color = {1.0F, 1.0F, 1.0F, 0.85F};
+      for (const auto& point : det.points) {
+        raw_corners.points.push_back({static_cast<double>(point.x), static_cast<double>(point.y)});
+      }
+      annot_msg.points.push_back(std::move(raw_corners));
 
       // 中心点（POINTS）
       foxglove::schemas::PointsAnnotation center_dot;
@@ -85,10 +125,11 @@ void DetectionPublisher::Publish(const std::vector<mv::Detection>& dets, uint64_
       label.font_size = 14.0;
       label.text_color = ColorWhite();
       label.background_color = {box_color.r, box_color.g, box_color.b, 0.5};
-      // 位置：左上角上方 15px
+      // 位置：稳定矩形左上角上方 18px
+      const cv::Point2f TOP_LEFT = TopLeftByBounding(stable_corners);
       label.position =
-          foxglove::schemas::Point2{static_cast<double>(det.points[3].x),          // 左上角 x
-                                    static_cast<double>(det.points[3].y) - 18.0};  // 上方 18px
+          foxglove::schemas::Point2{static_cast<double>(TOP_LEFT.x),
+                                    static_cast<double>(TOP_LEFT.y) - 18.0};
       annot_msg.texts.push_back(std::move(label));
     }
 

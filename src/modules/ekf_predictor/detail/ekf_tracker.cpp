@@ -35,6 +35,27 @@ const char* EkfTracker::StateName(State state) noexcept {
   }
 }
 
+const char* EkfTracker::LostReasonName(LostReason reason) noexcept {
+  switch (reason) {
+    case LostReason::NONE:
+      return "none";
+    case LostReason::MANUAL_RESET:
+      return "manual_reset";
+    case LostReason::LARGE_DT:
+      return "large_dt";
+    case LostReason::DETECTING_TIMEOUT:
+      return "detecting_timeout";
+    case LostReason::TEMP_LOST_TIMEOUT:
+      return "temp_lost_timeout";
+    case LostReason::RADIUS_DIVERGED:
+      return "radius_diverged";
+    case LostReason::NIS_DIVERGED:
+      return "nis_diverged";
+    default:
+      return "unknown";
+  }
+}
+
 // ── 构造 ─────────────────────────────────────────────────────────────────────
 
 EkfTracker::EkfTracker(const EkfTrackerParams& params)
@@ -43,13 +64,18 @@ EkfTracker::EkfTracker(const EkfTrackerParams& params)
 // ── Reset ────────────────────────────────────────────────────────────────────
 
 void EkfTracker::Reset() {
+  ResetWithReason(LostReason::MANUAL_RESET);
+}
+
+void EkfTracker::ResetWithReason(LostReason reason) {
   state_ = State::LOST;
+  last_lost_reason_ = reason;
   target_.reset();
   detect_count_ = 0;
   detecting_lost_count_ = 0;
   temp_lost_count_ = 0;
   max_temp_lost_ = params_.max_temp_lost_count;
-  MV_LOG_INFO("EkfTracker", "Reset to LOST");
+  MV_LOG_INFO("EkfTracker", "Reset to LOST (reason={})", LostReasonName(reason));
 }
 
 // ── Track（主入口）──────────────────────────────────────────────────────────
@@ -63,7 +89,7 @@ std::optional<EkfTrackTarget> EkfTracker::Track(const std::vector<Detection>& de
 
   if (state_ != State::LOST && dt > params_.max_dt_sec) {
     MV_LOG_WARN("EkfTracker", "Large dt: {:.3f}s, resetting", dt);
-    Reset();
+    ResetWithReason(LostReason::LARGE_DT);
     return std::nullopt;
   }
 
@@ -97,7 +123,7 @@ std::optional<EkfTrackTarget> EkfTracker::Track(const std::vector<Detection>& de
   // 6. 发散检测（radius 物理约束）
   if (state_ != State::LOST && target_ && target_->Diverged()) {
     MV_LOG_DEBUG("EkfTracker", "Target diverged (radius), resetting");
-    Reset();
+    ResetWithReason(LostReason::RADIUS_DIVERGED);
     return std::nullopt;
   }
 
@@ -109,7 +135,7 @@ std::optional<EkfTrackTarget> EkfTracker::Track(const std::vector<Detection>& de
     if (window > 0 && fail_count >= static_cast<int>(0.4 * window)) {
       MV_LOG_DEBUG("EkfTracker", "Target NIS diverged (fail_rate={:.2f}), resetting",
                    static_cast<double>(fail_count) / window);
-      Reset();
+      ResetWithReason(LostReason::NIS_DIVERGED);
       return std::nullopt;
     }
   }
@@ -219,6 +245,7 @@ void EkfTracker::StateMachine(bool found) {
           detect_count_ = 0;
           detecting_lost_count_ = 0;
           state_ = State::LOST;
+          last_lost_reason_ = LostReason::DETECTING_TIMEOUT;
           MV_LOG_DEBUG("EkfTracker", "DETECTING → LOST (lost_count={})", detecting_lost_count_);
         } else {
           MV_LOG_DEBUG("EkfTracker", "DETECTING miss {}/{}", detecting_lost_count_,
@@ -249,6 +276,7 @@ void EkfTracker::StateMachine(bool found) {
         ++temp_lost_count_;
         if (temp_lost_count_ > max_temp_lost_) {
           state_ = State::LOST;
+          last_lost_reason_ = LostReason::TEMP_LOST_TIMEOUT;
           target_.reset();
           MV_LOG_DEBUG("EkfTracker", "TEMP_LOST → LOST (count={})", temp_lost_count_);
         }

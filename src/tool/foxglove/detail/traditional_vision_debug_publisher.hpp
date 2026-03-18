@@ -57,6 +57,11 @@ class TraditionalVisionDebugPublisher {
     float min_area{10.0F};
   };
 
+  struct PublishOptions {
+    // When enabled, keep previous full-frame pixels outside current ROI to reduce flashing.
+    bool stabilize_diff_binary{false};
+  };
+
   explicit TraditionalVisionDebugPublisher(foxglove::Context ctx);
   ~TraditionalVisionDebugPublisher();
 
@@ -78,7 +83,8 @@ class TraditionalVisionDebugPublisher {
    */
   void Publish(const cv::Mat& diff, const cv::Mat& binary, const cv::Rect2i& roi_rect,
                const cv::Size& frame_size, const cv::Mat& raw_frame,
-               const LightVisParams& light_params, uint64_t ts_ns);
+               const LightVisParams& light_params, const PublishOptions& options,
+               uint64_t ts_ns);
 
  private:
   /** @brief 将 ROI 局部图还原到全图尺寸（若本身是全图则直接返回原图） */
@@ -97,6 +103,8 @@ class TraditionalVisionDebugPublisher {
   foxglove::Context ctx_;
   std::unique_ptr<ImagePublisher> image_pub_;
   std::mutex mtx_;
+  cv::Mat last_full_diff_;
+  cv::Mat last_full_binary_;
 };
 
 }  // namespace mv::tool::detail

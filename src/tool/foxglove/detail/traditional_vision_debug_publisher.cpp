@@ -51,15 +51,47 @@ cv::Mat TraditionalVisionDebugPublisher::RestoreToFullFrame(const cv::Mat& src,
 void TraditionalVisionDebugPublisher::Publish(const cv::Mat& diff, const cv::Mat& binary,
                                               const cv::Rect2i& roi_rect,
                                               const cv::Size& frame_size, const cv::Mat& raw_frame,
-                                              const LightVisParams& light_params, uint64_t ts_ns) {
+                                              const LightVisParams& light_params,
+                                              const PublishOptions& options, uint64_t ts_ns) {
   std::lock_guard<std::mutex> lock(mtx_);
 
-  const cv::Mat FULL_DIFF = RestoreToFullFrame(diff, roi_rect, frame_size);
+  auto compose_full = [&](const cv::Mat& src, cv::Mat& cache) -> cv::Mat {
+    if (src.empty()) {
+      return {};
+    }
+
+    if (!options.stabilize_diff_binary) {
+      return RestoreToFullFrame(src, roi_rect, frame_size);
+    }
+
+    if (roi_rect.area() == 0 || src.size() == frame_size) {
+      cache = src.clone();
+      return cache;
+    }
+
+    if (cache.empty() || cache.size() != frame_size || cache.type() != src.type()) {
+      cache = cv::Mat::zeros(frame_size, src.type());
+    }
+
+    const cv::Rect FRAME_RECT{cv::Point{0, 0}, frame_size};
+    const cv::Rect SAFE = cv::Rect(roi_rect.tl(), src.size()) & FRAME_RECT;
+    if (SAFE.area() <= 0) {
+      return cache;
+    }
+
+    const int SRC_X = SAFE.x - roi_rect.x;
+    const int SRC_Y = SAFE.y - roi_rect.y;
+    const cv::Rect SRC_RECT{SRC_X, SRC_Y, SAFE.width, SAFE.height};
+    src(SRC_RECT).copyTo(cache(SAFE));
+    return cache;
+  };
+
+  const cv::Mat FULL_DIFF = compose_full(diff, last_full_diff_);
   if (!FULL_DIFF.empty()) {
     image_pub_->Publish(FULL_DIFF, "vision/debug/diff", "camera", ts_ns);
   }
 
-  const cv::Mat FULL_BINARY = RestoreToFullFrame(binary, roi_rect, frame_size);
+  const cv::Mat FULL_BINARY = compose_full(binary, last_full_binary_);
   if (!FULL_BINARY.empty()) {
     image_pub_->Publish(FULL_BINARY, "vision/debug/binary", "camera", ts_ns);
 

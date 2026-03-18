@@ -68,6 +68,8 @@ bool ArmorDetectorParamManager::HandleParameter(FoxgloveSink& sink,
     params.max_armor_ratio = VALUE.get<float>();
   } else if (name == "armor.max_angle_diff" && VALUE.is_number()) {
     params.max_angle_diff = VALUE.get<float>();
+  } else if (name == "armor.min_tb_span_ratio" && VALUE.is_number()) {
+    params.min_tb_span_ratio = VALUE.get<float>();
   } else if (name == "armor.min_area" && VALUE.is_number()) {
     params.min_area = VALUE.get<float>();
   } else {
@@ -110,6 +112,7 @@ void ArmorDetectorParamManager::InjectParamsToYaml(YAML::Node& root) const {
   detector["min_armor_ratio"] = params.min_armor_ratio;
   detector["max_armor_ratio"] = params.max_armor_ratio;
   detector["max_angle_diff"] = params.max_angle_diff;
+  detector["min_tb_span_ratio"] = params.min_tb_span_ratio;
   detector["min_area"] = params.min_area;
 }
 
@@ -158,6 +161,7 @@ nlohmann::json ArmorDetectorParamManager::ParamsToJson(
   json["min_armor_ratio"] = params.min_armor_ratio;
   json["max_armor_ratio"] = params.max_armor_ratio;
   json["max_angle_diff"] = params.max_angle_diff;
+  json["min_tb_span_ratio"] = params.min_tb_span_ratio;
   json["min_area"] = params.min_area;
   return json;
 }
@@ -191,6 +195,9 @@ mv::modules::BasicArmorDetector::Params ArmorDetectorParamManager::JsonToParams(
   }
   if (json.contains("max_angle_diff") && json["max_angle_diff"].is_number()) {
     params.max_angle_diff = json["max_angle_diff"].get<float>();
+  }
+  if (json.contains("min_tb_span_ratio") && json["min_tb_span_ratio"].is_number()) {
+    params.min_tb_span_ratio = json["min_tb_span_ratio"].get<float>();
   }
   if (json.contains("min_area") && json["min_area"].is_number()) {
     params.min_area = json["min_area"].get<float>();

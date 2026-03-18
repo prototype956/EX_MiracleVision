@@ -127,6 +127,9 @@ class RoiManager {
   /** ROI 是否当前处于激活状态 */
   [[nodiscard]] bool IsActive() const noexcept { return state_.roi_rect.area() > 0; }
 
+  /** 连续未检测到目标的帧数（用于调试观测 ROI 状态机） */
+  [[nodiscard]] int GetLostCount() const noexcept { return state_.lost_count; }
+
  private:
   /// 连续失败帧上限：超过此帧数无目标后自动回退全图
   static constexpr int kMaxLost = 5;

@@ -162,9 +162,12 @@ void FoxgloveSink::PublishTraditionalVisionDebug(
   publisher_light_params.max_light_ratio = light_vis_params.max_light_ratio;
   publisher_light_params.max_light_angle = light_vis_params.max_light_angle;
   publisher_light_params.min_area = light_vis_params.min_area;
+  detail::TraditionalVisionDebugPublisher::PublishOptions publish_options;
+  publish_options.stabilize_diff_binary = light_vis_params.stabilize_diff_binary;
 
   impl_->tv_debug_pub->Publish(diff, binary, roi_rect, frame_size, raw_frame,
-                               publisher_light_params, detail::ResolveTs(ts_ns));
+                               publisher_light_params, publish_options,
+                               detail::ResolveTs(ts_ns));
 }
 
 // ── HUD 状态 JSON 同步 ────────────────────────────────────────────────────

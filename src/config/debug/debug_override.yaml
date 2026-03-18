@@ -2,6 +2,11 @@ system:
   log_dir: logs
   log_level: debug
   log_console: true
+debug:
+  foxglove:
+    stabilize_diff_binary: true
+  pnp_gate:
+    max_reproj_error_px: 12.0
 camera:
   backend: mindvision
   device_index: 0
@@ -90,6 +95,7 @@ detector:
   max_angle_diff: 87.8000031
   max_light_ratio: 1
   min_light_ratio: 0
+  min_tb_span_ratio: 0.65
   min_area: 10
 armor:
   small_half_w: 0.0675000027

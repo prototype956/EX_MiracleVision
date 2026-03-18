@@ -95,6 +95,7 @@ class FoxgloveSink {
     float max_light_ratio{0.95F};
     float max_light_angle{40.0F};
     float min_area{10.0F};
+    bool stabilize_diff_binary{false};
   };
 
   // ── 线程健康指标（由 PipelineNode 填充并上报）─────────────────────────

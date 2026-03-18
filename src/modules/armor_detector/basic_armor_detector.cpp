@@ -196,6 +196,7 @@ struct BasicArmorDetector::Impl {
    *   2. 高度比（短/长）>= 0.6
    *   3. 中心 Y 差 <= 0.5 × avg_len
    *   4. 水平间距 / avg_len ∈ [min_armor_ratio, max_armor_ratio]
+  *   5. 上沿/下沿跨度一致性 >= min_tb_span_ratio
    */
   [[nodiscard]] bool IsValidArmor(const LightBar& left, const LightBar& right) const {
     if (std::abs(left.tilt - right.tilt) > params.max_angle_diff) {
@@ -215,7 +216,20 @@ struct BasicArmorDetector::Impl {
       return false;
     }
     const float ARMOR_RATIO = DELTA_X / AVG_LEN;
-    return ARMOR_RATIO >= params.min_armor_ratio && ARMOR_RATIO <= params.max_armor_ratio;
+    if (ARMOR_RATIO < params.min_armor_ratio || ARMOR_RATIO > params.max_armor_ratio) {
+      return false;
+    }
+
+    // 若上沿和下沿跨度差异过大，通常是端点受遮挡/过曝导致的梯形误配。
+    const float TOP_SPAN = cv::norm(right.top - left.top);
+    const float BOTTOM_SPAN = cv::norm(right.bottom - left.bottom);
+    const float MAX_SPAN = std::max(TOP_SPAN, BOTTOM_SPAN);
+    const float MIN_SPAN = std::min(TOP_SPAN, BOTTOM_SPAN);
+    if (MAX_SPAN <= 1e-3F) {
+      return false;
+    }
+    const float TB_SPAN_RATIO = MIN_SPAN / MAX_SPAN;
+    return TB_SPAN_RATIO >= params.min_tb_span_ratio;
   }
 
   /**
@@ -281,14 +295,18 @@ bool BasicArmorDetector::Init(const YAML::Node& config) {
     if (det["min_armor_ratio"]) { impl_->params.min_armor_ratio = det["min_armor_ratio"].as<float>(); }
     if (det["max_armor_ratio"]) { impl_->params.max_armor_ratio = det["max_armor_ratio"].as<float>(); }
     if (det["max_angle_diff"])  { impl_->params.max_angle_diff  = det["max_angle_diff"].as<float>();  }
+    if (det["min_tb_span_ratio"]) { impl_->params.min_tb_span_ratio = det["min_tb_span_ratio"].as<float>(); }
     if (det["min_area"])        { impl_->params.min_area        = det["min_area"].as<float>();        }
     // clang-format on
   }
   impl_->initialized = true;
-  MV_LOG_INFO("BasicArmorDetector",
-              "Init OK — thresh={} green={} angle_lim={:.1f}° armor_ratio=[{:.1f},{:.1f}]",
-              impl_->params.light_thresh, impl_->params.green_thresh, impl_->params.max_light_angle,
-              impl_->params.min_armor_ratio, impl_->params.max_armor_ratio);
+  MV_LOG_INFO(
+      "BasicArmorDetector",
+      "Init OK — thresh={} green={} angle_lim={:.1f}° armor_ratio=[{:.1f},{:.1f}] "
+      "tb_span_ratio>={:.2f}",
+      impl_->params.light_thresh, impl_->params.green_thresh, impl_->params.max_light_angle,
+      impl_->params.min_armor_ratio, impl_->params.max_armor_ratio,
+      impl_->params.min_tb_span_ratio);
   return true;
 }
 
