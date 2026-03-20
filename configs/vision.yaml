@@ -29,6 +29,18 @@ serial:
 auto_aim:
   enemy_color: "red"     # red / blue
 
+  detector:
+    light_thresh:    160    # 灰度亮度阈值（所有亮像素，含白色中心）
+    green_thresh:     30    # 双通道差值阈值（R-B AND R-G，识别灯条彩色边缘）
+    white_thresh:    200    # 预留（当前未使用）
+    min_light_ratio: 0.07   # 灯条短/长轴最小比（原项目 RATIO_W_H_MAX=15 → 1/15≈0.07）
+    max_light_ratio: 0.95   # 灯条短/长轴最大比（原项目 RATIO_W_H_MIN=1  → 1/1 =1.0）
+    max_light_angle: 40.0   # 灯条允许的最大倾斜度（相对垂直，°）
+    min_armor_ratio: 1.0    # 装甲板宽高比下界（档板间距 / 平均灯条长）
+    max_armor_ratio: 5.5    # 装甲板宽高比上界
+    max_angle_diff:  8.0    # 两灯条角度之差上界（°）
+    min_area:        10.0   # 灯条轮廓最小面积（px²，过滤噪点）
+
   tracker:
     min_detect_count: 5
     max_detecting_lost_count: 2   # DETECTING阶段允许最多几帧漏检再回LOST（防止偶发漏帧打断积累）
