@@ -1,0 +1,36 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../sp_vision_25"
+		}
+	],
+	"settings": {
+		"clangd.arguments": [
+			"--background-index",
+			"--clang-tidy",
+			"--completion-style=detailed",
+			"--header-insertion=iwyu",
+			"--pch-storage=memory",
+			"--all-scopes-completion",
+			"--log=error",
+			"--pretty",
+			"--query-driver=/usr/bin/g++*,/usr/bin/g++-*,/usr/bin/gcc*,/usr/bin/gcc-*"
+		],
+		"files.associations": {
+			"*.hpp": "cpp",
+			"*.cpp": "cpp",
+			"*.h": "c",
+			"*.c": "c"
+		},
+		"docwriter.style": "Doxygen",
+		"docwriter.language": "Chinese",
+		"docwriter.hotkey.mac": "⌘ + .",
+		"docwriter.progress.trackFunctions": false,
+		"docwriter.progress.trackMethods": false,
+		"docwriter.progress.trackClasses": true,
+		"docwriter.progress.trackTypes": true
+	}
+}

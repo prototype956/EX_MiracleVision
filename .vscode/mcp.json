@@ -1,0 +1,16 @@
+{
+  "servers": {
+    "my-mcp-server-9de8d1a6": {
+      "type": "stdio",
+      "command": "/home/nuc/.nvm/versions/node/v20.20.2/bin/npx",
+      "args": [
+        "-y",
+        "wolfram-mcp"
+      ],
+      "env": {
+        "WOLFRAM_APP_ID": "JW6KT5PRKA"
+      }
+    }
+  },
+  "inputs": []
+}
