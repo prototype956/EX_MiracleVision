@@ -69,9 +69,6 @@ class PnpSolver final : public ISolver {
   PnpSolver& operator=(PnpSolver&&) = delete;
 
   /**
-   * @brief 加载相机内参与相机→云台外参
-   *
-   * @param config  来自 vision.yaml 的 calibration 节点，字段参见文件顶部 @code 块
    * @return true   内参解析成功，对象进入就绪状态
    * @return false  缺少 calibration 节点或 camera_matrix 维度错误，
    *               错误原因已通过日志输出，对象保持未初始化状态
@@ -100,6 +97,16 @@ class PnpSolver final : public ISolver {
    */
   bool Solve(Detection& detection) override;
 
+  // 设置云台到世界的旋转
+  void SetGimbalToWorldRotation(const Eigen::Quaterniond& quaternion);
+  // 获取云台到世界的旋转
+  [[nodiscard]] Eigen::Matrix3d GetGimbalToWorldRotation() const;
+
+  // 设置云台到世界的平移
+  void SetGimbalToWorldTranslation(const Eigen::Quaterniond& quaternion);
+  // 获取云台到世界的平移
+  [[nodiscard]] Eigen::Vector3d GetGimbalToWorldTranslation() const;
+
   /**
    * @brief 是否已完成 Init() 初始化
    *
@@ -107,7 +114,46 @@ class PnpSolver final : public ISolver {
    */
   [[nodiscard]] bool IsInitialized() const noexcept override { return initialized_; }
 
+  /**
+   * @brief 在给定区间遍历 yaw，寻找重投影误差最小的 yaw 并更新 detection
+   * @param detection 输入/输出，需先由 Solve 填充 xyz_in_gimbal
+   * @param yaw_min 最小 yaw（弧度）
+   * @param yaw_max 最大 yaw（弧度）
+   * @param step 步长（弧度）
+   */
+  void OptimizeYaw(Detection& detection, double yaw_min, double yaw_max, double step);
+
+  /**
+   * @brief 计算指定 yaw/pitch 下的重投影误差
+   * @param detection 目标检测结构体（需包含 points 和 type，以及已由 Solve 填写的 xyz_in_gimbal）
+   * @param yaw 指定 yaw 角（rad）
+   * @param pitch 指定 pitch 角（rad）
+   * @param inclined 倾斜角（用于 SJTUCost，加权角度/像素误差），若 <= 0 则返回 RMS
+   * @return 重投影误差（px）
+   */
+  [[nodiscard]] double ArmorReprojectionError(const Detection& detection, float yaw, float pitch,
+                                              float inclined) const;
+
+  // 将一组世界坐标投影到像素平面（使用外部提供的 世界->相机 旋转和平移）
+  [[nodiscard]] std::vector<cv::Point2f> WorldToPixel(
+      const std::vector<cv::Point3f>& world_pts, const Eigen::Matrix3d& R_world2camera,
+      const Eigen::Vector3d& t_world2camera) const;
+
  private:
+  // 重投影辅助函数：给定世界坐标与 yaw，返回四角点像素
+  [[nodiscard]] std::vector<cv::Point2f> ReprojectArmor(const Eigen::Vector3d& xyz_in_world,
+                                                         double yaw, ArmorType type) const;
+
+  // 计算给定 yaw 的重投影 RMS，若 out_proj 非空写入投影点
+  [[nodiscard]] double ArmorReprojectionRms(const Eigen::Vector3d& xyz_in_world, double yaw,
+                                             ArmorType type,
+                                             const std::vector<cv::Point2f>& img_pts,
+                                             std::array<cv::Point2f, 4>* out_proj) const;
+  // SJTU 代价函数（像素距离 + 角度差）
+  [[nodiscard]] double SJTUCost(const std::vector<cv::Point2f>& cv_refs,
+                                const std::vector<cv::Point2f>& cv_pts,
+                                const double& inclined) const;
+
   // ── 内参 ──────────────────────────────────────────────────────────────────
   cv::Mat camera_matrix_;  ///< 3×3，CV_64F
   cv::Mat dist_coeffs_;    ///< 1×5，CV_64F
@@ -118,6 +164,16 @@ class PnpSolver final : public ISolver {
   Eigen::Matrix3d R_camera2gimbal_{
       (Eigen::Matrix3d() << 1.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0).finished()};
   Eigen::Vector3d t_camera2gimbal_{Eigen::Vector3d::Zero()};
+
+  //云台→imu坐标系的旋转矩阵
+  Eigen::Matrix3d R_gimbal2imubody_{Eigen::Matrix3d::Identity()};
+  //云台→imu坐标系的平移向量（单位：米）
+  Eigen::Vector3d t_gimbal2imubody_{Eigen::Vector3d::Zero()};
+
+  //云台→世界坐标系的旋转矩阵
+  Eigen::Matrix3d R_gimbal2world_{Eigen::Matrix3d::Identity()};
+  //云台→世界坐标系的平移向量（单位：米）
+  Eigen::Vector3d t_gimbal2world_{Eigen::Vector3d::Zero()};
 
   // ── 世界坐标模板 ──────────────────────────────────────────────────────────
   // 默认值与 vision.yaml armor 节点一致；Init() 读取 yaml 后覆盖。
@@ -132,9 +188,9 @@ class PnpSolver final : public ISolver {
   //   优先选空间上离上一帧更近的解，阻止无谓翻转。
   cv::Mat last_tvec_;  ///< 上一帧选定解的 tvec（空则表示无历史记录）
   /// 重投影误差差距阈值（px）：差距 < 此值则启用时序锁定
-  static constexpr double kReprErrHysteresis = 2.0;
+  static constexpr double REPR_ERR_HYSTERESIS = 2.0;
   /// 位置跳变上限：两帧间距超过此值（m）则认为目标切换，重置历史
-  static constexpr double kMaxFrameJump = 1.0;
+  static constexpr double MAX_FRAME_JUMP = 1.0;
 
   bool initialized_{false};
 };
