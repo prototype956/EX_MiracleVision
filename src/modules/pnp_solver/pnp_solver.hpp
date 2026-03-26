@@ -135,20 +135,19 @@ class PnpSolver final : public ISolver {
                                               float inclined) const;
 
   // 将一组世界坐标投影到像素平面（使用外部提供的 世界->相机 旋转和平移）
-  [[nodiscard]] std::vector<cv::Point2f> WorldToPixel(
-      const std::vector<cv::Point3f>& world_pts, const Eigen::Matrix3d& R_world2camera,
-      const Eigen::Vector3d& t_world2camera) const;
+  [[nodiscard]] std::vector<cv::Point2f> WorldToPixel(const std::vector<cv::Point3f>& world_pts,
+                                                      const Eigen::Matrix3d& R_world2camera,
+                                                      const Eigen::Vector3d& t_world2camera) const;
 
  private:
   // 重投影辅助函数：给定世界坐标与 yaw，返回四角点像素
   [[nodiscard]] std::vector<cv::Point2f> ReprojectArmor(const Eigen::Vector3d& xyz_in_world,
-                                                         double yaw, ArmorType type) const;
+                                                        double yaw, ArmorType type) const;
 
   // 计算给定 yaw 的重投影 RMS，若 out_proj 非空写入投影点
   [[nodiscard]] double ArmorReprojectionRms(const Eigen::Vector3d& xyz_in_world, double yaw,
-                                             ArmorType type,
-                                             const std::vector<cv::Point2f>& img_pts,
-                                             std::array<cv::Point2f, 4>* out_proj) const;
+                                            ArmorType type, const std::vector<cv::Point2f>& img_pts,
+                                            std::array<cv::Point2f, 4>* out_proj) const;
   // SJTU 代价函数（像素距离 + 角度差）
   [[nodiscard]] double SJTUCost(const std::vector<cv::Point2f>& cv_refs,
                                 const std::vector<cv::Point2f>& cv_pts,

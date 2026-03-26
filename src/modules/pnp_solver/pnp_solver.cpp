@@ -331,20 +331,20 @@ void PnpSolver::OptimizeYaw(Detection& detection, double yaw_min, double yaw_max
 
 // 私有辅助函数：给定世界坐标与 yaw，重投影装甲四角点（使用固定 pitch=+15°）
 std::vector<cv::Point2f> PnpSolver::ReprojectArmor(const Eigen::Vector3d& xyz_in_world, double yaw,
-                           ArmorType type) const {
+                                                   ArmorType type) const {
   const double pitch_rad = 15.0 * CV_PI / 180.0;
   const double sin_yaw = std::sin(yaw);
   const double cos_yaw = std::cos(yaw);
   const double sin_pitch = std::sin(pitch_rad);
   const double cos_pitch = std::cos(pitch_rad);
 
-  const Eigen::Matrix3d r_armor2world{
-    {cos_yaw * cos_pitch, -sin_yaw, cos_yaw * sin_pitch},
-    {sin_yaw * cos_pitch, cos_yaw, sin_yaw * sin_pitch},
-    {-sin_pitch, 0.0, cos_pitch}};
-  Eigen::Matrix3d r_armor2camera = R_camera2gimbal_.transpose() * R_gimbal2world_.transpose() * r_armor2world;
+  const Eigen::Matrix3d r_armor2world{{cos_yaw * cos_pitch, -sin_yaw, cos_yaw * sin_pitch},
+                                      {sin_yaw * cos_pitch, cos_yaw, sin_yaw * sin_pitch},
+                                      {-sin_pitch, 0.0, cos_pitch}};
+  Eigen::Matrix3d r_armor2camera =
+      R_camera2gimbal_.transpose() * R_gimbal2world_.transpose() * r_armor2world;
   Eigen::Vector3d t_armor2camera = R_camera2gimbal_.transpose() *
-                   (R_gimbal2world_.transpose() * xyz_in_world - t_camera2gimbal_);
+                                   (R_gimbal2world_.transpose() * xyz_in_world - t_camera2gimbal_);
 
   cv::Mat r_cv;
   cv::eigen2cv(r_armor2camera, r_cv);
@@ -396,15 +396,14 @@ double PnpSolver::ArmorReprojectionError(const Detection& detection, float yaw, 
   const double sin_pitch = std::sin(pitch);
   const double cos_pitch = std::cos(pitch);
 
-  const Eigen::Matrix3d r_armor2world{
-      {cos_yaw * cos_pitch, -sin_yaw, cos_yaw * sin_pitch},
-      {sin_yaw * cos_pitch, cos_yaw, sin_yaw * sin_pitch},
-      {-sin_pitch, 0.0, cos_pitch}};
+  const Eigen::Matrix3d r_armor2world{{cos_yaw * cos_pitch, -sin_yaw, cos_yaw * sin_pitch},
+                                      {sin_yaw * cos_pitch, cos_yaw, sin_yaw * sin_pitch},
+                                      {-sin_pitch, 0.0, cos_pitch}};
 
   Eigen::Matrix3d r_armor2camera =
       R_camera2gimbal_.transpose() * R_gimbal2world_.transpose() * r_armor2world;
   Eigen::Vector3d t_armor2camera = R_camera2gimbal_.transpose() *
-                                  (R_gimbal2world_.transpose() * xyz_in_world - t_camera2gimbal_);
+                                   (R_gimbal2world_.transpose() * xyz_in_world - t_camera2gimbal_);
 
   cv::Mat r_cv;
   cv::eigen2cv(r_armor2camera, r_cv);
@@ -421,11 +420,12 @@ double PnpSolver::ArmorReprojectionError(const Detection& detection, float yaw, 
     return std::numeric_limits<double>::infinity();
   }
 
-  // 若提供 inclined (>0)，使用 SJTUCost（像素距离 + 角度差）；否则返回 RMS（与 ArmorReprojectionRms 一致）
+  // 若提供 inclined (>0)，使用 SJTUCost（像素距离 + 角度差）；否则返回 RMS（与 ArmorReprojectionRms
+  // 一致）
   if (inclined > 0.0F) {
     // SJTUCost 接受 (refs, pts, inclined)——refs 为参考（投影），pts 为检测点
-    return SJTUCost(proj_pts, std::vector<cv::Point2f>(detection.points.begin(),
-                                                      detection.points.end()),
+    return SJTUCost(proj_pts,
+                    std::vector<cv::Point2f>(detection.points.begin(), detection.points.end()),
                     static_cast<double>(inclined));
   }
 
@@ -440,8 +440,7 @@ double PnpSolver::ArmorReprojectionError(const Detection& detection, float yaw, 
 
 // SJTU 代价函数（像素距离 + 角度差）
 double PnpSolver::SJTUCost(const std::vector<cv::Point2f>& cv_refs,
-                           const std::vector<cv::Point2f>& cv_pts,
-                           const double& inclined) const {
+                           const std::vector<cv::Point2f>& cv_pts, const double& inclined) const {
   std::size_t size = cv_refs.size();
   std::vector<Eigen::Vector2d> refs;
   std::vector<Eigen::Vector2d> pts;
@@ -470,8 +469,10 @@ double PnpSolver::SJTUCost(const std::vector<cv::Point2f>& cv_refs,
     const double b_norm = pt_d.norm();
     if (a_norm > 1e-12 && b_norm > 1e-12) {
       double v = (ref_d.dot(pt_d)) / (a_norm * b_norm);
-      if (v > 1.0) v = 1.0;
-      if (v < -1.0) v = -1.0;
+      if (v > 1.0)
+        v = 1.0;
+      if (v < -1.0)
+        v = -1.0;
       angular_dis = std::acos(v);
     }
 
@@ -487,8 +488,8 @@ double PnpSolver::SJTUCost(const std::vector<cv::Point2f>& cv_refs,
 
 // 将一组世界坐标投影到像素平面（使用外部提供的 世界->相机 旋转和平移）
 std::vector<cv::Point2f> mv::modules::PnpSolver::WorldToPixel(
-  const std::vector<cv::Point3f>& world_pts, const Eigen::Matrix3d& R_world2camera,
-  const Eigen::Vector3d& t_world2camera) const {
+    const std::vector<cv::Point3f>& world_pts, const Eigen::Matrix3d& R_world2camera,
+    const Eigen::Vector3d& t_world2camera) const {
   // 转为 OpenCV rvec/tvec（Rodrigues 需要 3x3 矩阵）
   cv::Mat rvec;
   cv::Mat tvec;
@@ -500,10 +501,12 @@ std::vector<cv::Point2f> mv::modules::PnpSolver::WorldToPixel(
   for (const auto& wp : world_pts) {
     Eigen::Vector3d wp_e(wp.x, wp.y, wp.z);
     Eigen::Vector3d cam = R_world2camera * wp_e + t_world2camera;
-    if (cam.z() > 0.0) valid_world_points.push_back(wp);
+    if (cam.z() > 0.0)
+      valid_world_points.push_back(wp);
   }
 
-  if (valid_world_points.empty()) return {};
+  if (valid_world_points.empty())
+    return {};
 
   std::vector<cv::Point2f> image_points;
   cv::projectPoints(valid_world_points, rvec, tvec, camera_matrix_, dist_coeffs_, image_points);
