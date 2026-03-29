@@ -53,7 +53,7 @@ auto_aim:
     low_speed_delay_ms: 100
     high_speed_delay_ms: 70
     decision_speed: 25
-    bullet_speed: 100
+    bullet_speed: 23
     P0_diag:
       - 1
       - 1
@@ -70,6 +70,7 @@ auto_aim:
     auto_fire: true
     min_lock_frames: 5
     first_tolerance_rad: 0.050000000000000003
+    fire_tolerate_frame5: 3
     fire_tolerate_frames: 3
 calibration:
   camera_matrix: [1823.2, 0.0, 640.6, 0.0, 1827.9, 514.1, 0.0, 0.0, 1.0]
@@ -78,18 +79,35 @@ calibration:
   R_camera_to_gimbal: [0.986548389054692, 0.161921004986479, -0.02244691956061263, -0.1617560656316138, 0.947131083714861, -0.277087866014544, -0.02360617048513046, 0.2769915132369248, 0.9605823495722505]
   t_camera_to_gimbal:
     - 0.12753363076535701
-    - 0.2428271399483049
-    - -0.14481639907333249
+    - 0.24282713994830479
+    - -1.1448163990733324
+debug:
+  foxglove:
+    stabilize_diff_binary: true
+    prediction_reproj:
+      use_normal_axis: false
+      armor_yaw_offset_deg: 90.0
+      min_stable_tracking_frames: 5
+      suppress_on_radius_diverged: true
+      delta_roll_deg: 0.0
+      delta_pitch_deg: 1.0
+      delta_yaw_deg: 0.0
+      delta_tx_m: 0.0
+      delta_ty_m: 0.0
+      delta_tz_m: 0.0
+  pnp_gate:
+    max_reproj_error_px: 12
 detector:
-  light_thresh: 109
-  green_thresh: 81
-  white_thresh: 255
+  light_thresh: 80
+  green_thresh: 100
+  white_thresh: 0
   max_light_angle: 90
   min_armor_ratio: 0
-  max_armor_ratio: 5.5
+  max_armor_ratio: 7.625
   max_angle_diff: 87.8000031
-  max_light_ratio: 1
+  max_light_ratio: 30
   min_light_ratio: 0
+  min_tb_span_ratio: 0.649999976
   min_area: 10
 armor:
   small_half_w: 0.0675000027

@@ -28,11 +28,27 @@
 #include <cstring>
 #include <sstream>
 
+#include <Eigen/Geometry>
 #include <nlohmann/json.hpp>
 #include <opencv2/imgproc.hpp>
 #include <spdlog/spdlog.h>
 
 namespace mv::tool::detail {
+
+namespace {
+
+foxglove::schemas::Quaternion FacingOriginQuaternion(const Eigen::Vector3d& point_in_gimbal) {
+  if (point_in_gimbal.norm() < 1e-6) {
+    return {0.0, 0.0, 0.0, 1.0};
+  }
+
+  const Eigen::Vector3d NORMAL_TO_GIMBAL = (-point_in_gimbal).normalized();
+  const Eigen::Quaterniond Q =
+      Eigen::Quaterniond::FromTwoVectors(Eigen::Vector3d::UnitZ(), NORMAL_TO_GIMBAL);
+  return {Q.x(), Q.y(), Q.z(), Q.w()};
+}
+
+}  // namespace
 
 PnpVisualizer::PnpVisualizer(foxglove::Context ctx) : ctx_(std::move(ctx)) {
   // 在构造时立即注册所有频道，确保 Foxglove 客户端连接时已完成 advertise。
@@ -213,7 +229,9 @@ void PnpVisualizer::Publish(const std::vector<mv::Detection>& dets, const cv::Ma
       // 装甲板平面（半透明浅蓝矩形，展示装甲板在 3D 场景中的实际尺寸）
       foxglove::schemas::CubePrimitive armor_plane;
       const double hw = (det.type == mv::ArmorType::BIG) ? big_half_w_ : small_half_w_;
-      armor_plane.pose = MakePose(origin.x(), origin.y(), origin.z(), 0.0, 0.0, 0.0, 1.0);
+      const auto ORIENTATION = FacingOriginQuaternion(origin);
+      armor_plane.pose = MakePose(origin.x(), origin.y(), origin.z(), ORIENTATION.x, ORIENTATION.y,
+                                  ORIENTATION.z, ORIENTATION.w);
       armor_plane.size = foxglove::schemas::Vector3{hw * 2.0, half_h_ * 2.0, 0.004};
       foxglove::schemas::Color plane_color = {0.3, 0.7, 1.0, 0.45};
       armor_plane.color = plane_color;
@@ -245,8 +263,9 @@ void PnpVisualizer::Publish(const std::vector<mv::Detection>& dets, const cv::Ma
         // 第二解的装甲板平面（橙色半透明）
         foxglove::schemas::CubePrimitive alt_plane;
         const double ahw = (det.type == mv::ArmorType::BIG) ? big_half_w_ : small_half_w_;
-        alt_plane.pose =
-            MakePose(alt_origin.x(), alt_origin.y(), alt_origin.z(), 0.0, 0.0, 0.0, 1.0);
+        const auto ALT_ORIENTATION = FacingOriginQuaternion(alt_origin);
+        alt_plane.pose = MakePose(alt_origin.x(), alt_origin.y(), alt_origin.z(), ALT_ORIENTATION.x,
+                                  ALT_ORIENTATION.y, ALT_ORIENTATION.z, ALT_ORIENTATION.w);
         alt_plane.size = foxglove::schemas::Vector3{ahw * 2.0, half_h_ * 2.0, 0.004};
         alt_plane.color = {1.0, 0.45, 0.0, 0.3};
         alt_entity.cubes.push_back(std::move(alt_plane));
