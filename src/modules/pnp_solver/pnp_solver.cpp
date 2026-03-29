@@ -52,20 +52,40 @@ PnpSolver::~PnpSolver() = default;
 
 // ── 云台→世界坐标变换接口实现 ─────────────────────────────────────────────
 
+/**
+ * @brief 设定云台→世界坐标系旋转变换（通常由 IMU 四元数提供）
+ * @param quaternion 全局绝对方向四元数
+ * @thread_safety Not thread-safe
+ */
 void PnpSolver::SetGimbalToWorldRotation(const Eigen::Quaterniond& quaternion) {
   Eigen::Matrix3d R_imubody2imuabsolute_ = quaternion.toRotationMatrix();
   R_gimbal2world_ = R_gimbal2imubody_.transpose() * R_imubody2imuabsolute_ * R_gimbal2imubody_;
 }
 
+/**
+ * @brief 查询云台→世界坐标系旋转矩阵
+ * @return 当前云台→世界旋转矩阵
+ * @thread_safety Not thread-safe
+ */
 Eigen::Matrix3d PnpSolver::GetGimbalToWorldRotation() const {
   return R_gimbal2world_;
 }
 
+/**
+ * @brief 设定云台→世界坐标系平移向量（通常由 IMU 姿态与安装位姿联合计算）
+ * @param quaternion 全局绝对方向四元数
+ * @thread_safety Not thread-safe
+ */
 void PnpSolver::SetGimbalToWorldTranslation(const Eigen::Quaterniond& quaternion) {
   Eigen::Matrix3d R_imubody2imuabsolute_ = quaternion.toRotationMatrix();
   t_gimbal2world_ = R_imubody2imuabsolute_ * t_gimbal2imubody_;
 }
 
+/**
+ * @brief 查询云台→世界坐标系平移向量
+ * @return 云台在世界坐标系下的 3x1 位置向量（单位：m）
+ * @thread_safety Not thread-safe
+ */
 Eigen::Vector3d PnpSolver::GetGimbalToWorldTranslation() const {
   return t_gimbal2world_;
 }
@@ -154,6 +174,14 @@ bool PnpSolver::Init(const YAML::Node& config) {
 
 // ── Solve ─────────────────────────────────────────────────────────────────
 
+/**
+ * @brief 基于 IPPE 双解选优完成单目标位姿解算
+ * @param detection 输入角点与装甲类型，输出云台系位置、yaw/pitch 与重投影误差
+ * @return true 解算成功并写回 detection 字段
+ * @return false 未初始化或 IPPE 未返回有效解
+ * @note 选解顺序：Z>0 过滤 -> 最小重投影误差 -> 时序连续性锁定
+ * @thread_safety Not thread-safe
+ */
 bool PnpSolver::Solve(Detection& detection) {
   if (!initialized_) {
     MV_LOG_ERROR("PnpSolver", "Solve() called before Init()");
@@ -298,6 +326,15 @@ bool PnpSolver::Solve(Detection& detection) {
 }
 
 // ── Yaw 优化（遍历重投影误差）────────────────────────────────────────────
+
+/**
+ * @brief 在给定区间遍历 yaw，选择重投影 RMS 最小解
+ * @param detection 输入/输出目标结构体，需先由 Solve 填充 xyz_in_gimbal
+ * @param yaw_min 搜索下界（rad）
+ * @param yaw_max 搜索上界（rad）
+ * @param step 搜索步长（rad）
+ * @thread_safety Not thread-safe
+ */
 void PnpSolver::OptimizeYaw(Detection& detection, double yaw_min, double yaw_max, double step) {
   if (!initialized_) {
     MV_LOG_ERROR("PnpSolver", "OptimizeYaw() called before Init()");
@@ -329,7 +366,20 @@ void PnpSolver::OptimizeYaw(Detection& detection, double yaw_min, double yaw_max
   detection.reprojected_points = best_proj;
 }
 
-// 私有辅助函数：给定世界坐标与 yaw，重投影装甲四角点（使用固定 pitch=+15°）
+/**
+ * @brief 根据目标世界坐标与 yaw 重投影装甲板四角点
+ *
+ * 问题定义：给定目标中心在世界系的位置与朝向，构造 
+ * \f$R_{armor\to world}\f$，再通过
+ * \f$R_{armor\to camera}=R_{c2g}^T R_{g2w}^T R_{armor\to world}\f$
+ * 与 \f$t_{armor\to camera}\f$ 投影到像素平面。
+ *
+ * @param xyz_in_world 目标中心世界坐标（m）
+ * @param yaw 目标航向角（rad）
+ * @param type 装甲板类型（决定宽度模板）
+ * @return 4 个重投影角点（px）；顺序与 MakeWorldPoints 一致
+ * @thread_safety Not thread-safe
+ */
 std::vector<cv::Point2f> PnpSolver::ReprojectArmor(const Eigen::Vector3d& xyz_in_world, double yaw,
                                                    ArmorType type) const {
   const double pitch_rad = 15.0 * CV_PI / 180.0;
@@ -359,7 +409,23 @@ std::vector<cv::Point2f> PnpSolver::ReprojectArmor(const Eigen::Vector3d& xyz_in
   return image_points;
 }
 
-// 私有辅助函数：计算重投影 RMS（输入 world xyz、yaw、图像点），并可输出投影点
+/**
+ * @brief 计算给定世界坐标与 yaw 的四角点重投影 RMS
+ *
+ * 核心公式：
+ * \f[
+ * e_{rms}=\sqrt{\frac{1}{4}\sum_{i=1}^{4}\left\|\mathbf{u}_i-\hat{\mathbf{u}}_i\right\|^2}
+ * \f]
+ * 其中 \f$\mathbf{u}_i\f$ 为检测角点（px），\f$\hat{\mathbf{u}}_i\f$ 为投影角点（px）。
+ *
+ * @param xyz_in_world 目标中心世界坐标（m）
+ * @param yaw 目标航向角（rad）
+ * @param type 装甲板类型
+ * @param img_pts 输入图像角点（px）
+ * @param out_proj 可选输出，返回本次投影角点
+ * @return RMS 重投影误差（px）；若投影异常返回 inf
+ * @thread_safety Not thread-safe
+ */
 double PnpSolver::ArmorReprojectionRms(const Eigen::Vector3d& xyz_in_world, double yaw,
                                        ArmorType type, const std::vector<cv::Point2f>& img_pts,
                                        std::array<cv::Point2f, 4>* out_proj) const {
@@ -438,7 +504,20 @@ double PnpSolver::ArmorReprojectionError(const Detection& detection, float yaw, 
   return std::sqrt(err_sq / 4.0);
 }
 
-// SJTU 代价函数（像素距离 + 角度差）
+/**
+ * @brief 计算 SJTU 角点匹配代价（像素差 + 边方向差）
+ *
+ * 对每条边计算归一化像素距离与方向角差，并按倾角进行加权融合：
+ * \f$term_1 = d_{pixel}\sin(\theta),\ term_2 = d_{angle}\cos(\theta)\f$，
+ * 最终累计 \f$\sqrt{term_1^2 + 2term_2^2}\f$。
+ *
+ * @param cv_refs 参考角点（通常为投影角点，px）
+ * @param cv_pts 待评估角点（通常为检测角点，px）
+ * @param inclined 倾角权重参数（rad）
+ * @return SJTU 代价，值越小表示匹配越好
+ * @note 退化边（长度接近 0）会被跳过
+ * @thread_safety Not thread-safe
+ */
 double PnpSolver::SJTUCost(const std::vector<cv::Point2f>& cv_refs,
                            const std::vector<cv::Point2f>& cv_pts, const double& inclined) const {
   std::size_t size = cv_refs.size();
@@ -486,7 +565,18 @@ double PnpSolver::SJTUCost(const std::vector<cv::Point2f>& cv_refs,
 
 }  // namespace mv::modules
 
-// 将一组世界坐标投影到像素平面（使用外部提供的 世界->相机 旋转和平移）
+/**
+ * @brief 将世界坐标点集合投影到图像平面
+ *
+ * 使用外部给定的世界到相机变换：
+ * \f$\mathbf{X}_c = R_{w2c}\mathbf{X}_w + \mathbf{t}_{w2c}\f$，仅保留 \f$Z_c>0\f$ 点。
+ *
+ * @param world_pts 世界坐标点集合（m）
+ * @param R_world2camera 世界系到相机系旋转矩阵
+ * @param t_world2camera 世界系到相机系平移向量（m）
+ * @return 可见点对应的像素坐标列表（px）；无可见点返回空容器
+ * @thread_safety Not thread-safe
+ */
 std::vector<cv::Point2f> mv::modules::PnpSolver::WorldToPixel(
     const std::vector<cv::Point3f>& world_pts, const Eigen::Matrix3d& R_world2camera,
     const Eigen::Vector3d& t_world2camera) const {
