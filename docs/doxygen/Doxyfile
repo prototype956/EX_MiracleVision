@@ -1,0 +1,55 @@
+PROJECT_NAME           = "EX_MiracleVision"
+PROJECT_BRIEF          = "RoboMaster vision system API documentation"
+OUTPUT_DIRECTORY       = build/docs/doxygen
+CREATE_SUBDIRS         = NO
+
+OPTIMIZE_OUTPUT_FOR_C  = NO
+OPTIMIZE_OUTPUT_JAVA   = NO
+OPTIMIZE_FOR_FORTRAN   = NO
+OPTIMIZE_OUTPUT_VHDL   = NO
+
+INPUT                  = src docs/superpowers/specs
+FILE_PATTERNS          = *.hpp *.h *.cpp *.cc *.cxx *.md
+RECURSIVE              = YES
+EXCLUDE                = base module devices build 3rdparty
+
+USE_MDFILE_AS_MAINPAGE = docs/superpowers/specs/2026-03-29-doxygen-comment-template-design.md
+
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = NO
+EXTRACT_LOCAL_CLASSES  = YES
+EXTRACT_ANON_NSPACES   = NO
+
+JAVADOC_AUTOBRIEF      = NO
+MULTILINE_CPP_IS_BRIEF = NO
+QT_AUTOBRIEF           = NO
+ALIASES                =
+
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_TREEVIEW      = YES
+FULL_SIDEBAR           = NO
+
+GENERATE_LATEX         = NO
+
+HAVE_DOT               = NO
+
+MARKDOWN_SUPPORT       = YES
+TOC_INCLUDE_HEADINGS   = 2
+AUTOLINK_SUPPORT       = YES
+BUILTIN_STL_SUPPORT    = YES
+CPP_CLI_SUPPORT        = NO
+
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = NO
+SEARCH_INCLUDES        = YES
+
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = YES
+
+USE_MATHJAX            = YES
+MATHJAX_RELPATH        = https://cdn.jsdelivr.net/npm/mathjax@3/es5/
