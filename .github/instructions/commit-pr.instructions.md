@@ -17,12 +17,14 @@ applyTo: "**"
 ## 文档同步判定标准
 - 需要同步文档的改动类型：
 	- 新增或修改模块接口、行为、配置项、输入输出约束。
+	- 新增、修改或重命名测试目标、测试用例、测试入口脚本。
 	- CMake 构建目标、依赖关系、编译选项变更。
 	- clangd/clang-tidy/clang-format 使用口径或脚本流程变更。
 	- CI 阶段、门禁条件、流水线步骤变更。
 	- 注释模板、注释密度规则、Doxygen 注释治理流程变更。
 - 文档目标映射：
 	- 模块相关改动 -> docs/modules/<module-name>.md。
+	- 测试相关改动 -> docs/test/<topic>.md。
 	- CMake 相关改动 -> docs/cmake/ 下对应文档。
 	- clang 工具链相关改动 -> docs/clangd/ 下对应文档。
 	- CI 相关改动 -> docs/CI/ 下对应文档。
@@ -37,6 +39,7 @@ applyTo: "**"
 - clang 工具链文档目录：docs/clangd/。
 - CI 文档目录：docs/CI/。
 - 设计规范目录：docs/superpowers/specs/。
+- 测试文档目录：docs/test/。
 - 上述目录缺失时，必须在本次变更中补齐对应目录与文档。
 
 ## PR 映射模板（可直接复制）
@@ -68,7 +71,12 @@ applyTo: "**"
 - 文档：docs/superpowers/specs/<topic>.md
 - 变更点：<模板/流程/设计决策变更摘要>
 
-6. 组合改动示例（模块 + CMake + CI）
+6. 测试改动
+- 代码：src/test/... 或 test/...
+- 文档：docs/test/<topic>.md
+- 变更点：<新增/修改测试目标、用例覆盖、运行方式>
+
+7. 组合改动示例（模块 + CMake + CI）
 - 代码：src/modules/armor_detector/..., src/modules/CMakeLists.txt, .github/workflows/ci.yml
 - 文档：docs/modules/armor_detector.md, docs/cmake/module-targets.md, docs/CI/pipeline-gates.md
 - 变更点：<新增模块并接入构建，同时更新CI门禁>
@@ -110,9 +118,10 @@ applyTo: "**"
 - [ ] 若修改 clang 工具链配置或脚本，已同步更新 docs/clangd/ 对应文档。
 - [ ] 若修改 CI 流程，已同步更新 docs/CI/ 对应文档。
 - [ ] 若修改设计规范或流程规则，已同步更新 docs/superpowers/specs/ 对应文档。
+- [ ] 若修改测试目标或测试用例，已同步更新 docs/test/ 对应文档。
 - [ ] 若修改注释模板或注释检查口径，已同步更新 docs/superpowers/specs/comment-standards.md（或等效规范文档）。
 - [ ] PR 描述中已列出“代码改动 -> 文档改动”的映射关系。
-- [ ] docs/modules、docs/cmake、docs/clangd、docs/CI、docs/superpowers/specs 目录与目标文档存在。
+- [ ] docs/modules、docs/test、docs/cmake、docs/clangd、docs/CI、docs/superpowers/specs 目录与目标文档存在。
 
 ## PR 评审证据清单（执行项）
 - [ ] PR 描述中已提供变更目的与影响范围。

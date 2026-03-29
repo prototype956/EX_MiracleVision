@@ -35,6 +35,20 @@ target_compile_definitions(mv-video-test PRIVATE
 
 message(STATUS "      + mv-video-test (stage-6 offline video test)")
 
+# ── Stage 6.1 PnP Solver 最小测试 ───────────────────────────────────────────
+add_executable(mv-pnp-solver-test pnp_solver_test.cpp)
+
+target_link_libraries(mv-pnp-solver-test
+    PRIVATE
+        mv-mod-pnp-solver
+)
+
+target_compile_definitions(mv-pnp-solver-test PRIVATE
+    CONFIG_FILE_PATH="${CONFIG_FILE_PATH}"
+)
+
+message(STATUS "      + mv-pnp-solver-test (pnp solver minimal test)")
+
 # ── Stage 7 Foxglove 模块端到端测试 ──────────────────────────────────────────
 if(USE_FOXGLOVE_SDK)
     add_executable(mv-foxglove-vision-test foxglove_vision_test.cpp)
