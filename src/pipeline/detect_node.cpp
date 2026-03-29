@@ -14,13 +14,13 @@ static constexpr auto POP_TIMEOUT = std::chrono::milliseconds{10};
 DetectNode::DetectNode(std::unique_ptr<IDetector> detector, std::unique_ptr<ISolver> solver,
                        std::shared_ptr<Channel<FramePacket>> input_ch,
                        std::shared_ptr<Channel<DetectPacket>> output_ch,
-                       std::atomic<ArmorColor>& enemy_color)
+                       SharedState& state)
     : PipelineNode("DetectNode"),
       detector_(std::move(detector)),
       solver_(std::move(solver)),
       input_ch_(std::move(input_ch)),
       output_ch_(std::move(output_ch)),
-      enemy_color_(enemy_color) {}
+      state_(state) {}
 
 void DetectNode::OnStop() {
   if (input_ch_) {
@@ -41,7 +41,10 @@ void DetectNode::WorkLoop() {
       continue;
     }
 
-    const ArmorColor COLOR = enemy_color_.load();
+    const ArmorColor COLOR = state_.enemy_color.load();
+
+    // ── 注入云台姿态（IMU 四元数 -> Solver 坐标变换）──────────────────────
+    solver_->SetGimbalOrientation(state_.GetGimbalQuat());
 
     // ── 检测（2D） ────────────────────────────────────────────────────────
     auto detections = detector_->Detect(frame_pkt.frame, COLOR);

@@ -302,7 +302,7 @@ inline std::unique_ptr<VisionPipeline> VisionPipeline::Builder::Build() {
 
   pipeline->detect_node_ =
       std::make_unique<DetectNode>(std::move(detector_), std::move(solver_), pipeline->frame_ch_,
-                                   pipeline->detect_ch_, pipeline->state_.enemy_color);
+                     pipeline->detect_ch_, pipeline->state_);
 
   pipeline->predict_node_ =
       std::make_unique<PredictNode>(std::move(predictor_), std::move(voter_), pipeline->detect_ch_,

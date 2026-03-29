@@ -114,15 +114,15 @@ struct Detection {
    */
   double reproj_error{0.0};
 
-  // ── IPPE 第二候选解（供可视化识别歧义；是否可靠看 reproj_error_alt 对比）─────
+  // ── 候选解兼容字段（单解策略下由 Solver 统一复位）──────────────────────────
 
-  /** IPPE 是否返回了第二个解（平面目标必然有两个解，只是质量不同） */
+  /** 兼容历史可视化字段；单解策略下恒为 false */
   bool has_alt_solution{false};
-  /** 第二解的重投影角点（橙色可视化） */
+  /** 兼容字段：候选解重投影角点（单解策略下每帧复位） */
   std::array<cv::Point2f, 4> reprojected_points_alt{};
-  /** 第二解在云台坐标系下的 3D 位置 */
+  /** 兼容字段：候选解在云台坐标系下的 3D 位置（单解策略下每帧复位） */
   Eigen::Vector3d xyz_in_gimbal_alt{Eigen::Vector3d::Zero()};
-  /** 第二解的 RMS 重投影误差（像素） */
+  /** 兼容字段：候选解 RMS 重投影误差（单解策略下每帧复位为 0） */
   double reproj_error_alt{0.0};
 
   // ── 辅助方法 ─────────────────────────────────────────────────────────────

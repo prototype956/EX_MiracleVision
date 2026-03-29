@@ -1,35 +1,9 @@
 /**
  * @file pnp_solver.hpp
- * @brief 基于 OpenCV solvePnP 的装甲板位姿解算器（IPPE + 外参变换）
- *
- * 【算法原理】
- *   使用 cv::solvePnP（IPPE 方法，平面目标解析解），以装甲板四角点的已知
- *   世界坐标与图像像素坐标求解相机坐标系下的 R / t，再经外参矩阵（R_c2g /
- *   t_c2g）变换到云台坐标系后输出 xyz + 角度。
- *
- *   IPPE（Infinitesimal Plane-based Pose Estimation）对装甲板等平面目标
- *   比 ITERATIVE（Levenberg-Marquardt 迭代）更快、更不依赖初始值。
- *
- * 【世界坐标约定（armor 以中心为原点，Z=0，单位：m）】
- *   小装甲板（SMALL）：宽 0.135m，高 0.055m
- *   大装甲板（BIG  ）：宽 0.230m，高 0.055m
- *   角点顺序与 Detection.points 一致：BL / BR / TR / TL
- *
- * 【坐标系变换链】
- *   solvePnP → 相机坐标系（right+X、down+Y、fwd+Z）
- *            → 云台坐标系（R_c2g、t_c2g 外参）
- *
- * 【YAML 配置字段】（来自 vision.yaml 的 calibration 节点）
- * @code
- *   calibration:
- *     camera_matrix: [fx,0,cx, 0,fy,cy, 0,0,1]  # 9 个浮点数（行优先）
- *     distort_coeffs: [k1,k2,p1,p2,k3]           # 5 个畸变系数
- *     # 可选外参（不提供时使用 2-axis Y 翻转简化）
- *     R_camera_to_gimbal: [r00,r01,r02, r10,r11,r12, r20,r21,r22]  # 3×3 行优先
- *     t_camera_to_gimbal: [tx, ty, tz]                               # 3×1，单位 m
- * @endcode
- *
- * 工厂键：`"pnp"`
+ * @brief 装甲板平面目标 PnP 解算器（单解 IPPE + 相机到云台外参变换）。
+ * 输入：角点像素坐标（px）与装甲类型；输出：云台系位置（m）与 yaw/pitch（rad）。
+ * 坐标、单位、YAML 字段与选解细则见 docs/modules/pnp/pnp_solver.md。
+ * 工厂键："pnp"。
  */
 #pragma once
 
@@ -43,20 +17,9 @@ namespace mv::modules {
 /**
  * @brief 基于 IPPE 解析解的装甲板位姿解算器
  *
- * 实现 ISolver 接口，工厂键为 `"pnp"`。
- *
- * 【与旧版 basic_pnp 的区别】
- *   旧版 basic_pnp 使用 SOLVEPNP_ITERATIVE（LM 迭代），有初始值依赖，
- *   在无历史信息时收敛至错误最小值的概率较高。
- *   本实现改用 SOLVEPNP_IPPE（解析解）+ solvePnPGeneric 双解选优：
- *   1. IPPE 速度约为 LM 的 3~5 倍，精度在平面目标上相当；
- *   2. solvePnPGeneric 同时返回两个数学解，选优策略三级：
- *      Level 1 Z>0（目标必须在相机正前方）> Level 2 最小重投影误差 >
- *      Level 3 时序锁定（近距离误差接近时优先选与上一帧距离更近的解）。
- *
- * 【线程安全】
- *   Init() 和 Solve() 应由同一线程顺序调用。
- *   多个 PnpSolver 实例彼此独立，各自持有独立的内参/外参/时序状态。
+ * 实现 ISolver 接口，采用 solvePnP(IPPE) 单解策略。
+ * 单实例无历史解状态；实例间状态互不共享。
+ * @thread_safety Not thread-safe
  */
 class PnpSolver final : public ISolver {
  public:
@@ -69,48 +32,83 @@ class PnpSolver final : public ISolver {
   PnpSolver& operator=(PnpSolver&&) = delete;
 
   /**
+   * @brief 加载相机内参与可选外参，进入可解算状态。
+   * @param config 配置根节点，需包含 calibration.camera_matrix。
    * @return true   内参解析成功，对象进入就绪状态
    * @return false  缺少 calibration 节点或 camera_matrix 维度错误，
    *               错误原因已通过日志输出，对象保持未初始化状态
    *
    * @note 外参（R_camera_to_gimbal / t_camera_to_gimbal）可选：
    *       不提供时自动回退为 Y 轴翻转简化外参，与旧版行为兼容。
+   * @thread_safety Not thread-safe
    */
   bool Init(const YAML::Node& config) override;
 
   /**
    * @brief 对单块装甲板执行 PnP 解算，就地填写位姿字段
    *
+   * 问题定义：给定平面装甲板四角点像素坐标 \f$\mathbf{u}_i\f$（px）与
+   * 世界模板点 \f$\mathbf{X}_i\f$（m），求解相机位姿 \f$(\mathbf{R},\mathbf{t})\f$。
+   * 核心投影模型：
+   * \f[
+   * s\,\mathbf{u}_i = \mathbf{K}\left(\mathbf{R}\mathbf{X}_i + \mathbf{t}\right)
+   * \f]
    * 读取 detection.points（4 个图像角点）和 detection.type（决定世界坐标模板尺寸），
-   * 调用 solvePnPGeneric(IPPE) 获取最多两个解，按三级策略选优后写入：
+   * 调用 solvePnP(IPPE) 获取单解后写入：
    *   - detection.xyz_in_gimbal    云台坐标系三维位置（m）
    *   - detection.yaw_angle        水平角（rad，顺时针为正）
    *   - detection.pitch_angle      俯仰角（rad，向下为正）
    *   - detection.reprojected_points  主解重投影角点（4 点）
    *   - detection.reproj_error     主解重投影均方根误差（px）
-   *   - detection.has_alt_solution  是否存在第二候选解
-   *   - detection.xyz_in_gimbal_alt / reprojected_points_alt / reproj_error_alt
+   *   - detection.has_alt_solution  单解策略下恒为 false
+   *   - detection.xyz_in_gimbal_alt / reprojected_points_alt / reproj_error_alt 在每帧复位
    *
    * @param detection  输入/输出，需预先填好 points / type
    * @return true      解算成功，detection.is_solved 被置为 true
-   * @return false     解算失败（Init() 未调用，或 solvePnPGeneric 返回 0 个解）
+   * @return false     解算失败（Init() 未调用，或 solvePnP 返回 false）
+   * @thread_safety Not thread-safe
    */
   bool Solve(Detection& detection) override;
 
-  // 设置云台到世界的旋转
+  /**
+   * @brief 设置云台到世界坐标系的旋转矩阵。
+   * @param quaternion IMU 提供的姿态四元数。
+   * @thread_safety Not thread-safe
+   */
   void SetGimbalToWorldRotation(const Eigen::Quaterniond& quaternion);
-  // 获取云台到世界的旋转
+
+  /**
+   * @brief 获取云台到世界坐标系旋转矩阵。
+   * @return 3x3 旋转矩阵。
+   * @thread_safety Not thread-safe
+   */
   [[nodiscard]] Eigen::Matrix3d GetGimbalToWorldRotation() const;
 
-  // 设置云台到世界的平移
+  /**
+   * @brief 设置云台到世界坐标系的平移向量。
+   * @param quaternion IMU 提供的姿态四元数。
+   * @thread_safety Not thread-safe
+   */
   void SetGimbalToWorldTranslation(const Eigen::Quaterniond& quaternion);
-  // 获取云台到世界的平移
+
+  /**
+   * @brief 注入云台姿态（IMU 四元数），用于世界系相关计算
+   * @param quaternion 云台坐标系到世界坐标系旋转四元数
+   */
+  void SetGimbalOrientation(const Eigen::Quaterniond& quaternion) override;
+
+  /**
+   * @brief 获取云台到世界坐标系平移向量。
+   * @return 3x1 平移向量（m）。
+   * @thread_safety Not thread-safe
+   */
   [[nodiscard]] Eigen::Vector3d GetGimbalToWorldTranslation() const;
 
   /**
    * @brief 是否已完成 Init() 初始化
    *
    * 在 Solve() 调用前可用此方法检查对象是否就绪，避免未初始化时调用产生错误日志。
+   * @thread_safety Not thread-safe
    */
   [[nodiscard]] bool IsInitialized() const noexcept override { return initialized_; }
 
@@ -120,38 +118,92 @@ class PnpSolver final : public ISolver {
    * @param yaw_min 最小 yaw（弧度）
    * @param yaw_max 最大 yaw（弧度）
    * @param step 步长（弧度）
+   * @thread_safety Not thread-safe
    */
-  void OptimizeYaw(Detection& detection, double yaw_min, double yaw_max, double step);
+    // NOLINTBEGIN(bugprone-easily-swappable-parameters)
+    void OptimizeYaw(Detection& detection, double yaw_min, double yaw_max, double step);
+    // NOLINTEND(bugprone-easily-swappable-parameters)
 
   /**
    * @brief 计算指定 yaw/pitch 下的重投影误差
+   *
+   * 问题定义：在给定 \f$(yaw, pitch)\f$ 下，将装甲板模板点投影回图像并与观测角点比较。
+   * 当 inclined \f$>0\f$ 时使用 SJTUCost（像素差 + 边方向差），否则返回 RMS 误差：
+   * \f[
+   * e_{rms}=\sqrt{\frac{1}{4}\sum_{i=1}^{4}\|\mathbf{u}_i-\hat{\mathbf{u}}_i\|^2}
+   * \f]
+   * 其中 \f$\mathbf{u}_i\f$ 为检测角点（px），\f$\hat{\mathbf{u}}_i\f$ 为投影角点（px）。
+   *
    * @param detection 目标检测结构体（需包含 points 和 type，以及已由 Solve 填写的 xyz_in_gimbal）
    * @param yaw 指定 yaw 角（rad）
    * @param pitch 指定 pitch 角（rad）
    * @param inclined 倾斜角（用于 SJTUCost，加权角度/像素误差），若 <= 0 则返回 RMS
-   * @return 重投影误差（px）
+   * @return 重投影误差（px）；若未初始化或投影失败返回 inf
+   * @thread_safety Not thread-safe
    */
-  [[nodiscard]] double ArmorReprojectionError(const Detection& detection, float yaw, float pitch,
-                                              float inclined) const;
+    // NOLINTBEGIN(bugprone-easily-swappable-parameters)
+    [[nodiscard]] double ArmorReprojectionError(const Detection& detection, float yaw, float pitch,
+                                                                                            float inclined) const;
+    // NOLINTEND(bugprone-easily-swappable-parameters)
 
-  // 将一组世界坐标投影到像素平面（使用外部提供的 世界->相机 旋转和平移）
+  /**
+   * @brief 使用外部给定的世界到相机变换，将三维点投影到像素平面。
+   * @param world_pts 世界坐标点集合（m）。
+   * @param R_world2camera 世界系到相机系旋转矩阵。
+   * @param t_world2camera 世界系到相机系平移向量（m）。
+   * @return 可见点像素坐标（px），当全部点位于相机后方时返回空。
+   * @thread_safety Not thread-safe
+   */
   [[nodiscard]] std::vector<cv::Point2f> WorldToPixel(const std::vector<cv::Point3f>& world_pts,
-                                                      const Eigen::Matrix3d& R_world2camera,
+                                                      const Eigen::Matrix3d& r_world2camera,
                                                       const Eigen::Vector3d& t_world2camera) const;
 
  private:
-  // 重投影辅助函数：给定世界坐标与 yaw，返回四角点像素
+  /**
+   * @brief 给定目标中心世界坐标与 yaw，重投影装甲板四角点。
+   * @param xyz_in_world 目标中心世界坐标（m）。
+   * @param yaw 目标航向角（rad）。
+   * @param type 装甲板类型（决定宽度模板）。
+   * @return 四角点像素坐标（px），顺序为 BL/BR/TR/TL。
+   * @thread_safety Not thread-safe
+   */
   [[nodiscard]] std::vector<cv::Point2f> ReprojectArmor(const Eigen::Vector3d& xyz_in_world,
                                                         double yaw, ArmorType type) const;
 
-  // 计算给定 yaw 的重投影 RMS，若 out_proj 非空写入投影点
+  /**
+   * @brief 计算给定 yaw 下的四角点重投影 RMS。
+   * @param xyz_in_world 目标中心世界坐标（m）。
+   * @param yaw 目标航向角（rad）。
+   * @param type 装甲板类型。
+   * @param img_pts 检测角点（px）。
+   * @param out_proj 可选输出，写入本次投影角点（px）。
+   * @return RMS 重投影误差（px）；投影异常时返回 inf。
+   * @thread_safety Not thread-safe
+   */
   [[nodiscard]] double ArmorReprojectionRms(const Eigen::Vector3d& xyz_in_world, double yaw,
                                             ArmorType type, const std::vector<cv::Point2f>& img_pts,
                                             std::array<cv::Point2f, 4>* out_proj) const;
-  // SJTU 代价函数（像素距离 + 角度差）
-  [[nodiscard]] double SJTUCost(const std::vector<cv::Point2f>& cv_refs,
-                                const std::vector<cv::Point2f>& cv_pts,
-                                const double& inclined) const;
+
+  /**
+   * @brief SJTU 角点代价函数（像素距离 + 边方向差）。
+   *
+   * 对每条边构造像素差 \f$d_p\f$ 与角度差 \f$d_a\f$，按倾角 \f$\theta\f$ 融合：
+   * \f[
+   * cost_i = \sqrt{(d_p\sin\theta)^2 + 2(d_a\cos\theta)^2},\quad
+   * cost=\sum_i cost_i
+   * \f]
+   *
+   * @param cv_refs 参考角点（通常为投影角点，px）。
+   * @param cv_pts 待评估角点（通常为检测角点，px）。
+   * @param inclined 倾角权重 \f$\theta\f$（rad）。
+   * @return 匹配代价，值越小表示匹配越好。
+   * @thread_safety Not thread-safe
+   */
+    // NOLINTBEGIN(bugprone-easily-swappable-parameters)
+    [[nodiscard]] static double SJTUCost(const std::vector<cv::Point2f>& cv_refs,
+                                                                             const std::vector<cv::Point2f>& cv_pts,
+                                                                             const double& inclined);
+    // NOLINTEND(bugprone-easily-swappable-parameters)
 
   // ── 内参 ──────────────────────────────────────────────────────────────────
   cv::Mat camera_matrix_;  ///< 3×3，CV_64F
@@ -179,17 +231,6 @@ class PnpSolver final : public ISolver {
   float small_half_w_{0.0675F};  ///< 小装甲板半宽（m）
   float big_half_w_{0.115F};     ///< 大装甲板半宽（m）
   float half_h_{0.0275F};        ///< 装甲板半高，大小装甲相同（m）
-
-  // ── 时序锁定（Temporal Continuity）──────────────────────────────────────
-  // 近距离时 IPPE 两解的重投影误差非常接近，单帧比较容易翻解。
-  // 记录上一帧最终选定解在相机坐标系下的 tvec，用空间距离作为第二判据：
-  //   两解都满足 Z>0 且重投影误差差距 < kReprErrHysteresis 时，
-  //   优先选空间上离上一帧更近的解，阻止无谓翻转。
-  cv::Mat last_tvec_;  ///< 上一帧选定解的 tvec（空则表示无历史记录）
-  /// 重投影误差差距阈值（px）：差距 < 此值则启用时序锁定
-  static constexpr double REPR_ERR_HYSTERESIS = 2.0;
-  /// 位置跳变上限：两帧间距超过此值（m）则认为目标切换，重置历史
-  static constexpr double MAX_FRAME_JUMP = 1.0;
 
   bool initialized_{false};
 };

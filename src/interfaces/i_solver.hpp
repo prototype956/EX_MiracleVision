@@ -24,6 +24,7 @@
 
 #include "types.hpp"
 
+#include <Eigen/Geometry>
 #include <yaml-cpp/yaml.h>
 
 namespace mv {
@@ -59,6 +60,17 @@ class ISolver {
    * 调用方应在 Detect() 之后、Predict() 之前逐个调用此函数。
    */
   virtual bool Solve(Detection& detection) = 0;
+
+  /**
+   * @brief 注入云台姿态（由 IMU 上行四元数提供）
+   * @param q 云台坐标系到世界坐标系的旋转四元数
+   *
+   * 默认实现为空操作，用于保持旧解算器兼容。
+   * 需要世界系重投影/优化的实现可覆盖此接口。
+   */
+  virtual void SetGimbalOrientation(const Eigen::Quaterniond& q) {
+    (void)q;
+  }
 
   /** @return 解算器是否已完成初始化 */
   [[nodiscard]] virtual bool IsInitialized() const noexcept = 0;

@@ -7,7 +7,7 @@
  *   - 调用 IDetector::Detect() 获取 2D 检测结果；
  *   - 对每个 Detection 调用 ISolver::Solve() 完成 PnP 解算；
  *   - 将 DetectPacket 推入 output_ch_；
- *   - enemy_color 来自 Pipeline::SharedState（SerialNode 反向更新）。
+ *   - enemy_color 与 IMU 姿态来自 Pipeline::SharedState（SerialNode 反向更新）。
  *
  * 【并发设计】
  *   DetectNode 运行在独立线程：
@@ -16,30 +16,20 @@
  *   - 多个 DetectNode 可共享同一 input_ch_（多消费者模式，
  *     用于神经网络推理 GPU 加速场景，目前 1:1 即可）。
  *
- * 【enemy_color 注入】
- *   enemy_color 通过构造时注入的 std::atomic<ArmorColor>& 引用获取，
- *   而不是写死在初始化时。这允许 SerialNode 在收到下位机更新后，
- *   下一帧 DetectNode 自动使用新颜色，无需额外同步机制。
- *
- * 【使用示例】
- * @code
- *   std::atomic<ArmorColor> color{ArmorColor::RED};
- *   DetectNode det_node{
- *     std::move(detector), std::move(solver),
- *     frame_ch, detect_ch, color
- *   };
- *   det_node.Start();
- * @endcode
+ * 【SharedState 注入】
+ *   DetectNode 通过构造注入 SharedState&：
+ *   - 使用 state.enemy_color 读取敌方颜色；
+ *   - 使用 state.gimbal_quat 将 IMU 姿态逐帧注入 ISolver。
  */
 #pragma once
 
-#include "node.hpp"
-#include "packet.hpp"
 #include "channel.hpp"
 #include "interfaces/i_detector.hpp"
 #include "interfaces/i_solver.hpp"
+#include "node.hpp"
+#include "packet.hpp"
+#include "shared_state.hpp"
 
-#include <atomic>
 #include <memory>
 
 namespace mv::pipeline {
@@ -47,17 +37,15 @@ namespace mv::pipeline {
 class DetectNode final : public PipelineNode {
  public:
   /**
-   * @param detector    检测器（已 Init()）
-   * @param solver      PnP 解算器（已 Init()）
-   * @param input_ch    输入通道（FramePacket）
-   * @param output_ch   输出通道（DetectPacket）
-   * @param enemy_color 共享原子变量，由 SerialNode 更新
+   * @param detector  检测器（已 Init()）
+   * @param solver    PnP 解算器（已 Init()）
+   * @param input_ch  输入通道（FramePacket）
+   * @param output_ch 输出通道（DetectPacket）
+   * @param state     共享状态，由 SerialNode 更新颜色与 IMU 四元数
    */
-  DetectNode(std::unique_ptr<IDetector> detector,
-             std::unique_ptr<ISolver> solver,
+  DetectNode(std::unique_ptr<IDetector> detector, std::unique_ptr<ISolver> solver,
              std::shared_ptr<Channel<FramePacket>> input_ch,
-             std::shared_ptr<Channel<DetectPacket>> output_ch,
-             std::atomic<ArmorColor>& enemy_color);
+             std::shared_ptr<Channel<DetectPacket>> output_ch, SharedState& state);
 
   ~DetectNode() override = default;
 
@@ -75,7 +63,7 @@ class DetectNode final : public PipelineNode {
   std::unique_ptr<ISolver> solver_;
   std::shared_ptr<Channel<FramePacket>> input_ch_;
   std::shared_ptr<Channel<DetectPacket>> output_ch_;
-  std::atomic<ArmorColor>& enemy_color_;
+  SharedState& state_;
 };
 
 }  // namespace mv::pipeline
