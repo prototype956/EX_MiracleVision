@@ -73,10 +73,11 @@ class RoiManager {
    *
    * @param detections  Detect() 输出（局部坐标），将被就地修改为全图坐标
    * @param offset      本帧 Crop() 返回的偏移量
-   * @param frame_size  原始帧尺寸（保留接口，当前实现未裁剪 ROI 本身）
+   * @param frame_size  原始帧尺寸（用于按全图中心更新 distance_to_center）
    */
+  // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
   void RestoreAndUpdate(std::vector<Detection>& detections, const cv::Point2i& offset,
-                        const cv::Size& /*frame_size*/) {
+                        const cv::Size& frame_size) {
     if (detections.empty()) {
       if (++state_.lost_count >= kMaxLost) {
         state_ = {};
@@ -86,10 +87,13 @@ class RoiManager {
 
     // ── 坐标还原：局部 → 全图 ───────────────────────────────────────────
     const cv::Point2f OFF{static_cast<float>(offset.x), static_cast<float>(offset.y)};
-    const cv::Point2f IMG_CTR{640.0F, 512.0F};
+    const cv::Point2f IMG_CTR{
+        static_cast<float>(frame_size.width) * 0.5F,
+        static_cast<float>(frame_size.height) * 0.5F,
+    };
     for (auto& det : detections) {
-      for (auto& pt : det.points) {
-        pt += OFF;
+      for (auto& point_px : det.points) {
+        point_px += OFF;
       }
       det.box.x += OFF.x;
       det.box.y += OFF.y;
@@ -129,6 +133,7 @@ class RoiManager {
 
  private:
   /// 连续失败帧上限：超过此帧数无目标后自动回退全图
+  // NOLINTNEXTLINE(readability-identifier-naming)
   static constexpr int kMaxLost = 5;
 
   /**

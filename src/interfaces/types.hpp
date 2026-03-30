@@ -65,9 +65,13 @@ enum class ArmorNumber : uint8_t {
  * @brief 单个装甲板的检测结果
  *
  * 坐标系约定：
- *   - points[0..3]：图像像素坐标，逆时针排列，points[0] 为左下角；
+ *   - points[0..3]：图像像素坐标，顺序固定为 BL, BR, TR, TL；
+ *     其中 points[0]=BL, points[1]=BR, points[2]=TR, points[3]=TL。
  *   - xyz_in_gimbal：云台坐标系下的 3D 位置（由 ISolver 填充）；
  *     未经 PnP 求解时为零向量，is_solved 为 false。
+ *   - points/box 的坐标系与 Detect() 输入帧一致：
+ *     若输入为 ROI 局部图，则为局部坐标；若输入为全图，则为全图坐标。
+ *     坐标还原由 RoiManager::RestoreAndUpdate() 负责。
  */
 struct Detection {
   // ── 2D 信息（检测器直接输出）─────────────────────────────────────────────
@@ -75,7 +79,7 @@ struct Detection {
   ArmorType type{ArmorType::SMALL};
   ArmorNumber number{ArmorNumber::UNKNOWN};
 
-  /** 图像平面四个角点，顺序：左下、右下、右上、左上 */
+  /** 图像平面四个角点（input-frame 像素坐标），顺序：BL, BR, TR, TL */
   std::array<cv::Point2f, 4> points{};
 
   /** 检测框（用于 ROI 裁剪和 NMS） */
@@ -97,7 +101,10 @@ struct Detection {
   double yaw_angle{0.0};
   double pitch_angle{0.0};
 
-  /** 像素距离到图像中心，用于优先级排序 */
+  /**
+   * 检测中心到当前 input-frame 中心的像素距离，用于优先级排序。
+   * 若该帧由 ROI 管理器完成坐标还原，则应在还原后按 full-frame 重新计算。
+   */
   double distance_to_center{0.0};
 
   // ── PnP 解算质量（ISolver 填充）──────────────────────────────────────────

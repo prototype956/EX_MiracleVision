@@ -49,6 +49,20 @@ target_compile_definitions(mv-pnp-solver-test PRIVATE
 
 message(STATUS "      + mv-pnp-solver-test (pnp solver minimal test)")
 
+# ── ArmorDetector 契约测试（角点顺序 / ROI 坐标恢复 / 回退策略）──────────────
+add_executable(mv-armor-detector-contract-test armor_detector_contract_test.cpp)
+
+target_link_libraries(mv-armor-detector-contract-test
+    PRIVATE
+        mv-mod-armor-detector
+)
+
+target_compile_definitions(mv-armor-detector-contract-test PRIVATE
+    CONFIG_FILE_PATH="${CONFIG_FILE_PATH}"
+)
+
+message(STATUS "      + mv-armor-detector-contract-test (detector + roi contracts)")
+
 # ── Stage 7 Foxglove 模块端到端测试 ──────────────────────────────────────────
 if(USE_FOXGLOVE_SDK)
     add_executable(mv-foxglove-vision-test foxglove_vision_test.cpp)
