@@ -111,6 +111,12 @@ rm -rf build && cmake -B build -S . && cmake --build build
 # 查看可用目标
 cmake --build build --target help
 
+# 仅编译 detection 契约测试
+cmake --build build --target mv-armor-detector-contract-test -j$(nproc)
+
+# 运行 detection 契约测试
+./build/src/test/mv-armor-detector-contract-test
+
 # 安装（如果配置了）
 cmake --install build
 ```
