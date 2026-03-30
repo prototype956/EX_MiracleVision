@@ -63,4 +63,4 @@
 - ROI 坐标恢复；
 - 连续丢失回退。
 
-详细命令与样例见 `docs/test/armor_detector_contract_test.md`。
+详细命令与样例见 `docs/test/detector/armor_detector_contract_test.md`。

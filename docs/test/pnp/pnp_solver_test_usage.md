@@ -7,7 +7,7 @@
 - 成功路径：完成 `Init` 后，给定合成角点可 `Solve` 成功。
 
 对应代码：
-- `src/test/pnp_solver_test.cpp`
+- `src/test/pnp/pnp_solver_test.cpp`
 
 ## 2. 构建
 
@@ -44,10 +44,10 @@ cmake --build build
 
 ```bash
 # 1) 仅检查该测试文件静态问题
-./scripts/check_code.sh --file src/test/pnp_solver_test.cpp
+./scripts/check_code.sh --file src/test/pnp/pnp_solver_test.cpp
 
 # 2) 检查该测试文件格式
-clang-format --dry-run --Werror src/test/pnp_solver_test.cpp
+clang-format --dry-run --Werror src/test/pnp/pnp_solver_test.cpp
 
 # 3) 运行单测
 ./build/src/test/mv-pnp-solver-test

@@ -36,7 +36,7 @@ target_compile_definitions(mv-video-test PRIVATE
 message(STATUS "      + mv-video-test (stage-6 offline video test)")
 
 # ── Stage 6.1 PnP Solver 最小测试 ───────────────────────────────────────────
-add_executable(mv-pnp-solver-test pnp_solver_test.cpp)
+add_executable(mv-pnp-solver-test pnp/pnp_solver_test.cpp)
 
 target_link_libraries(mv-pnp-solver-test
     PRIVATE
@@ -49,8 +49,96 @@ target_compile_definitions(mv-pnp-solver-test PRIVATE
 
 message(STATUS "      + mv-pnp-solver-test (pnp solver minimal test)")
 
+# ── EKF TrackTarget Update 行为测试（Card 0-1）────────────────────────────
+add_executable(mv-ekf-track-target-update-test ekf/ekf_track_target_update_test.cpp)
+
+target_link_libraries(mv-ekf-track-target-update-test
+    PRIVATE
+        mv-mod-ekf-predictor
+)
+
+target_compile_definitions(mv-ekf-track-target-update-test PRIVATE
+    CONFIG_FILE_PATH="${CONFIG_FILE_PATH}"
+)
+
+message(STATUS "      + mv-ekf-track-target-update-test (ekf update behavior)")
+
+add_executable(mv-ekf-tracker-set-target-test
+    ekf/ekf_tracker_set_target_test.cpp
+)
+target_link_libraries(mv-ekf-tracker-set-target-test
+    PRIVATE
+        mv-mod-ekf-predictor
+)
+
+target_compile_definitions(mv-ekf-tracker-set-target-test PRIVATE
+    CONFIG_FILE_PATH="${CONFIG_FILE_PATH}"
+)
+
+message(STATUS "      + mv-ekf-tracker-set-target-test (set target branch priority)")
+
+add_executable(mv-ekf-predictor-init-config-test
+    ekf/ekf_predictor_init_config_test.cpp
+)
+
+target_link_libraries(mv-ekf-predictor-init-config-test
+    PRIVATE
+        mv-mod-ekf-predictor
+)
+
+target_compile_definitions(mv-ekf-predictor-init-config-test PRIVATE
+    CONFIG_FILE_PATH="${CONFIG_FILE_PATH}"
+)
+
+message(STATUS "      + mv-ekf-predictor-init-config-test (init config mapping)")
+
+add_executable(mv-trajectory-solver-choose-aim-point-test
+    ekf/trajectory_solver_choose_aim_point_test.cpp
+)
+
+target_link_libraries(mv-trajectory-solver-choose-aim-point-test
+    PRIVATE
+        mv-mod-ekf-predictor
+)
+
+target_compile_definitions(mv-trajectory-solver-choose-aim-point-test PRIVATE
+    CONFIG_FILE_PATH="${CONFIG_FILE_PATH}"
+)
+
+message(STATUS "      + mv-trajectory-solver-choose-aim-point-test (choose aim point lock)")
+
+add_executable(mv-trajectory-solver-solve-iter-test
+    ekf/trajectory_solver_solve_iter_test.cpp
+)
+
+target_link_libraries(mv-trajectory-solver-solve-iter-test
+    PRIVATE
+        mv-mod-ekf-predictor
+)
+
+target_compile_definitions(mv-trajectory-solver-solve-iter-test PRIVATE
+    CONFIG_FILE_PATH="${CONFIG_FILE_PATH}"
+)
+
+message(STATUS "      + mv-trajectory-solver-solve-iter-test (solve iteration converge)")
+
+add_executable(mv-ekf-tracker-state-machine-test
+    ekf/ekf_tracker_state_machine_test.cpp
+)
+
+target_link_libraries(mv-ekf-tracker-state-machine-test
+    PRIVATE
+        mv-mod-ekf-predictor
+)
+
+target_compile_definitions(mv-ekf-tracker-state-machine-test PRIVATE
+    CONFIG_FILE_PATH="${CONFIG_FILE_PATH}"
+)
+
+message(STATUS "      + mv-ekf-tracker-state-machine-test (tracker state machine)")
+
 # ── ArmorDetector 契约测试（角点顺序 / ROI 坐标恢复 / 回退策略）──────────────
-add_executable(mv-armor-detector-contract-test armor_detector_contract_test.cpp)
+add_executable(mv-armor-detector-contract-test detector/armor_detector_contract_test.cpp)
 
 target_link_libraries(mv-armor-detector-contract-test
     PRIVATE

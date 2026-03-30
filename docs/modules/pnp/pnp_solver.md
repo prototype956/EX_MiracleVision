@@ -141,4 +141,4 @@ PnP 在 Foxglove 的可视化规范位于：
 ## 11. 单测使用
 
 `PnpSolver` 最小单测的构建与运行说明见：
-- `docs/test/pnp_solver_test_usage.md`
+- `docs/test/pnp/pnp_solver_test_usage.md`
