@@ -54,36 +54,89 @@ EkfPredictor::~EkfPredictor() = default;
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 bool EkfPredictor::Init(const YAML::Node& config) {
   impl_->config = config;
 
-  // 兼容两种 YAML 布局：
-  //   1. 传入整个 auto_aim.yaml 根节点（字段直接在根）
-  //   2. 传入 auto_aim.ekf_predictor 子节点（字段直接在该节点）
-  const YAML::Node& n = config["ekf_predictor"].IsDefined() ? config["ekf_predictor"] : config;
+  // 兼容三种 YAML 布局：
+  //   1. 传入 vision.yaml 根节点：root.auto_aim.ekf_predictor
+  //   2. 传入 auto_aim 子树：auto_aim.ekf_predictor
+  //   3. 传入 ekf_predictor 子树：字段直接位于当前节点
+  YAML::Node n = config;
+  if (config["auto_aim"].IsDefined() && config["auto_aim"]["ekf_predictor"].IsDefined()) {
+    n = config["auto_aim"]["ekf_predictor"];
+  } else if (config["ekf_predictor"].IsDefined()) {
+    n = config["ekf_predictor"];
+  }
+  YAML::Node config_node = n;
+
+  auto read_double_key = [&](const char* key, double fallback) {
+    if (config_node.IsMap() && config_node[key].IsDefined()) {
+      return config_node[key].as<double>(fallback);
+    }
+    return fallback;
+  };
+
+  auto read_int_key = [&](const char* key, int fallback) {
+    if (config_node.IsMap() && config_node[key].IsDefined()) {
+      return config_node[key].as<int>(fallback);
+    }
+    return fallback;
+  };
 
   // ── 从 YAML 填充 EkfTrackerParams ──────────────────────────────────────
   detail::EkfTrackerParams tp;
-  tp.min_detect_count = n["min_detect_count"].as<int>(5);
-  tp.max_detecting_lost_count = n["max_detecting_lost_count"].as<int>(2);
-  tp.max_temp_lost_count = n["max_temp_lost_count"].as<int>(15);
-  tp.outpost_max_temp_lost_count = n["outpost_max_temp_lost_count"].as<int>(30);
-  tp.max_dt_sec = n["max_dt_sec"].as<double>(0.1);
+  tp.min_detect_count = read_int_key("min_detect_count", 5);
+  tp.max_detecting_lost_count = read_int_key("max_detecting_lost_count", 2);
+  tp.max_temp_lost_count = read_int_key("max_temp_lost_count", 15);
+  tp.outpost_max_temp_lost_count = read_int_key("outpost_max_temp_lost_count", 30);
+  tp.max_dt_sec = read_double_key("max_dt_sec", 0.1);
 
-  tp.init_radius_small = n["init_radius_small"].as<double>(0.27);
-  tp.init_radius_big = n["init_radius_big"].as<double>(0.27);
-  tp.init_radius_outpost = n["init_radius_outpost"].as<double>(0.26);
+  tp.init_radius_small = read_double_key("init_radius_small", 0.27);
+  tp.init_radius_big = read_double_key("init_radius_big", 0.27);
+  tp.init_radius_outpost = read_double_key("init_radius_outpost", 0.26);
 
-  tp.process_noise_pos = n["process_noise_pos"].as<double>(100.0);
-  tp.process_noise_ang = n["process_noise_ang"].as<double>(400.0);
-  tp.process_noise_outpost_pos = n["process_noise_outpost_pos"].as<double>(10.0);
-  tp.process_noise_outpost_ang = n["process_noise_outpost_ang"].as<double>(0.1);
+  YAML::Node process_noise_node;
+  if (config_node.IsMap() && config_node["process_noise"].IsDefined() &&
+      config_node["process_noise"].IsMap()) {
+    process_noise_node = config_node["process_noise"];
+  }
 
-  tp.divergence_threshold = n["divergence_threshold"].as<double>(1e6);
+  if (process_noise_node.IsMap() && process_noise_node["normal"].IsDefined() &&
+      process_noise_node["normal"].IsMap()) {
+    YAML::Node normal_noise = process_noise_node["normal"];
+    tp.process_noise_pos = normal_noise["pos"].as<double>(100.0);
+    tp.process_noise_ang = normal_noise["ang"].as<double>(400.0);
+  } else {
+    tp.process_noise_pos = read_double_key("process_noise_pos", 100.0);
+    tp.process_noise_ang = read_double_key("process_noise_ang", 400.0);
+  }
+
+  if (process_noise_node.IsMap() && process_noise_node["outpost"].IsDefined() &&
+      process_noise_node["outpost"].IsMap()) {
+    YAML::Node outpost_noise = process_noise_node["outpost"];
+    tp.process_noise_outpost_pos = outpost_noise["pos"].as<double>(10.0);
+    tp.process_noise_outpost_ang = outpost_noise["ang"].as<double>(0.1);
+  } else {
+    tp.process_noise_outpost_pos = read_double_key("process_noise_outpost_pos", 10.0);
+    tp.process_noise_outpost_ang = read_double_key("process_noise_outpost_ang", 0.1);
+  }
+
+  tp.divergence_threshold = read_double_key("divergence_threshold", 1e6);
 
   // 初始协方差对角（11 维）
-  if (n["P0_diag"].IsDefined()) {
-    auto vec = n["P0_diag"].as<std::vector<double>>();
+  YAML::Node p0_diag_node;
+  if (config_node.IsMap() && config_node["p0_diag"].IsDefined()) {
+    p0_diag_node = config_node["p0_diag"];
+  }
+
+  if (p0_diag_node.IsMap() && p0_diag_node["default"].IsDefined()) {
+    auto vec = p0_diag_node["default"].as<std::vector<double>>();
+    if (vec.size() == 11) {
+      tp.P0_diag = Eigen::Map<Eigen::VectorXd>(vec.data(), 11);
+    }
+  } else if (config_node.IsMap() && config_node["P0_diag"].IsDefined()) {
+    auto vec = config_node["P0_diag"].as<std::vector<double>>();
     if (vec.size() == 11) {
       tp.P0_diag = Eigen::Map<Eigen::VectorXd>(vec.data(), 11);
     }
@@ -91,26 +144,34 @@ bool EkfPredictor::Init(const YAML::Node& config) {
 
   // ── 从 YAML 填充 TrajectorySolverParams ────────────────────────────────
   detail::TrajectorySolverParams sp;
-  sp.yaw_offset_rad = n["yaw_offset_deg"].as<double>(0.0) / 57.295779513;
-  sp.pitch_offset_rad = n["pitch_offset_deg"].as<double>(0.0) / 57.295779513;
-  sp.low_speed_delay_ms = n["low_speed_delay_ms"].as<double>(100.0);
-  sp.high_speed_delay_ms = n["high_speed_delay_ms"].as<double>(70.0);
-  sp.decision_speed = n["decision_speed"].as<double>(25.0);
-  sp.max_iter = n["max_iter"].as<int>(10);
-  sp.iter_converge_ms = n["iter_converge_ms"].as<double>(1.0);
-  sp.max_approaching_angle = n["max_approaching_angle"].as<double>(1.047);  // 60 deg
-  sp.max_leaving_angle = n["max_leaving_angle"].as<double>(0.349);          // 20 deg
+  sp.yaw_offset_rad = read_double_key("yaw_offset_deg", 0.0) / 57.295779513;
+  sp.pitch_offset_rad = read_double_key("pitch_offset_deg", 0.0) / 57.295779513;
+  sp.low_speed_delay_ms = read_double_key("low_speed_delay_ms", 100.0);
+  sp.high_speed_delay_ms = read_double_key("high_speed_delay_ms", 70.0);
+  sp.decision_speed = read_double_key("decision_speed", 25.0);
+  sp.max_iter = read_int_key("max_iter", 10);
+  sp.iter_converge_ms = read_double_key("iter_converge_ms", 1.0);
+  sp.max_approaching_angle = read_double_key("max_approaching_angle", 1.047);  // 60 deg
+  sp.max_leaving_angle = read_double_key("max_leaving_angle", 0.349);          // 20 deg
 
   // ── 弹速默认值 ─────────────────────────────────────────────────────────
-  impl_->bullet_speed = n["bullet_speed"].as<double>(23.0);
+  impl_->bullet_speed = read_double_key("bullet_speed", 23.0);
 
   // ── 实例化算法组件 ─────────────────────────────────────────────────────
   impl_->tracker = detail::EkfTracker(tp);
   impl_->solver = detail::TrajectorySolver(sp);
 
   impl_->initialized = true;
-  MV_LOG_INFO("EkfPredictor", "Init OK (min_detect={}, bullet_speed={:.1f} m/s)",
-              tp.min_detect_count, impl_->bullet_speed);
+  bool grouped_noise_defined = process_noise_node.IsMap();
+  bool grouped_p0_defined = p0_diag_node.IsMap();
+  bool has_outpost_radius_key =
+      config_node.IsMap() && config_node["init_radius_outpost"].IsDefined();
+  MV_LOG_INFO("EkfPredictor",
+              "Init OK (min_detect={}, bullet_speed={:.1f} m/s, r_small={:.3f}, r_big={:.3f}, "
+              "r_outpost={:.3f}, has_outpost_key={}, grouped_noise={}, grouped_p0={})",
+              tp.min_detect_count, impl_->bullet_speed, tp.init_radius_small, tp.init_radius_big,
+              tp.init_radius_outpost, has_outpost_radius_key, grouped_noise_defined,
+              grouped_p0_defined);
   return true;
 }
 

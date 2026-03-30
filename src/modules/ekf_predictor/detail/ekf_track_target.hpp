@@ -44,8 +44,8 @@
  *     board 0/1：间隔 π，半径均为 r
  *
  * 【发散检测】
- *   - diverged()：协方差矩阵迹 > threshold，说明 EKF 数值不稳定；
- *   - converged()：recent_nis_failures 窗口失败率 < threshold，说明观测与预测吻合。
+ *   - Diverged()：半径物理边界超限（r 或 r+Δl 不在允许区间）视为发散；
+ *   - Converged()：更新次数达到阈值且未发散，视为收敛。
  *
  * 【线程安全】
  *   非线程安全，由 EkfTracker 在单一线程顺序调用。
@@ -62,11 +62,18 @@
 
 namespace mv::modules::detail {
 
+struct ProcessNoiseParams {
+  double process_noise_pos{100.0};
+  double process_noise_ang{400.0};
+  double process_noise_outpost_pos{10.0};
+  double process_noise_outpost_ang{0.1};
+};
+
 /**
  * @brief 单目标 EKF 跟踪状态（11 维状态向量，世界坐标系）
  *
  * 对 ExtendedKalmanFilter 的业务封装层：
- * - Update(detection) 将 Detection.xyz_in_world 转换为观测量 z 送入 EKF；
+ * - Update(detection) 构建 4 维观测 z=[yaw,pitch,dist,armor_yaw] 送入 EKF；
  * - Predict(dt) 推进状态估计，构建状态转移矩阵 F 和过程噪声 Q；
  * - armor_xyza_list() 根据当前状态向量反算所有装甲板的 [x,y,z,yaw]。
  */
@@ -85,14 +92,16 @@ class EkfTrackTarget {
   /**
    * @brief 从第一次检测结果初始化 EKF
    *
-   * @param detection   首帧检测结果（已填充 xyz_in_world）
+   * @param detection   首帧检测结果（Detection.xyz_in_gimbal，上游已旋转到世界系）
    * @param t           当前时间戳
    * @param radius      初始旋转半径估计（m，从配置读取，按 armor_num 区分）
    * @param armor_num   装甲板数（2/3/4，决定多板建模策略）
    * @param P0_diag     初始协方差对角元素（11 维，从配置读取）
+   * @param process_noise_params 过程噪声参数集合（普通/前哨站）
    */
   EkfTrackTarget(const Detection& detection, std::chrono::steady_clock::time_point t, double radius,
-                 int armor_num, const Eigen::VectorXd& P0_diag);
+                 int armor_num, const Eigen::VectorXd& P0_diag,
+                 const ProcessNoiseParams& process_noise_params = {});
 
   // ── 核心接口 ──────────────────────────────────────────────────────────
 
@@ -115,10 +124,11 @@ class EkfTrackTarget {
   /**
    * @brief 观测更新步（融合新检测结果）
    *
-   * 从 detection.xyz_in_world 反算观测角 ψ，
+   * 从 Detection.xyz_in_gimbal（上游已旋转到世界系）构建 4 维观测
+   * z=[obs_yaw, obs_pitch, obs_dist, detection.yaw_angle]，
    * 匹配最近装甲板 ID，构建观测 h(x) 和雅可比 H，调用 ekf_.Update()。
    *
-   * @param detection  当前帧匹配到的装甲板检测结果（已填充 xyz_in_world）
+   * @param detection  当前帧匹配到的装甲板检测结果（Detection.xyz_in_gimbal，上游已转世界系）
    */
   void Update(const Detection& detection);
 
@@ -146,7 +156,7 @@ class EkfTrackTarget {
   /**
    * @brief 检查 EKF 是否发散（数值不稳定）
    *
-   * 判据：协方差矩阵 P 的迹超过阈值（说明不确定度爆炸）。
+   * 判据：半径物理边界超限（r 或 r+Δl 超出允许范围）。
    * EkfTracker 在每帧 Update 后调用此方法，发散则重置为 LOST。
    */
   [[nodiscard]] bool Diverged() const;
@@ -154,7 +164,7 @@ class EkfTrackTarget {
   /**
    * @brief 检查 EKF 是否已收敛（观测与模型吻合）
    *
-   * 判据：recent_nis_failures 窗口中失败率 < 40%。
+   * 判据：更新次数达到阈值（普通目标 >= 3，前哨站 >= 10）且未发散。
    * 收敛后 EkfTracker 才将状态转换到 TRACKING（允许开火）。
    */
   [[nodiscard]] bool Converged() const;
@@ -167,11 +177,17 @@ class EkfTrackTarget {
   int switch_count_{0};  ///< 装甲板跳变计数（累积，调试用）
   int update_count_{0};  ///< 累积 Update() 调用次数
 
-  bool is_switch_{false};            ///< 本次 Update 是否发生跳变
+  bool is_switch_{false};             ///< 本次 Update 是否发生跳变
   mutable bool is_converged_{false};  ///< EKF 是否已收敛（缓存，避免每帧重查窗口）
 
   tool::ExtendedKalmanFilter ekf_;           ///< EKF 实例（核心滤波器）
   std::chrono::steady_clock::time_point t_;  ///< 上次更新时间戳
+
+  // 过程噪声参数（由 tracker/init 注入）
+  double process_noise_pos_{100.0};
+  double process_noise_ang_{400.0};
+  double process_noise_outpost_pos_{10.0};
+  double process_noise_outpost_ang_{0.1};
 
   /**
    * @brief 计算单块装甲板在世界系中的 3D 坐标
@@ -187,7 +203,8 @@ class EkfTrackTarget {
   /**
    * @brief 计算观测函数 h(x) 关于 x 的雅可比矩阵
    *
-   * h: R^11 → R^3（h(x) = ArmorXyz(x, id)）
+   * h: R^11 -> R^4（h(x) = [yaw, pitch, dist, armor_yaw]）
+   * 返回 4x11 雅可比矩阵。
    * 解析求导，非数值差分（精度更高、速度更快）。
    *
    * @param x  当前状态向量（在此处线性化）
@@ -195,7 +212,7 @@ class EkfTrackTarget {
    */
   [[nodiscard]] Eigen::MatrixXd HJacobian(const Eigen::VectorXd& x, int id) const;
 
-  /** @brief 选择与观测角 ψ 最近的装甲板 ID */
+  /** @brief 选择与观测角 ψ 最近的装甲板 ID；同误差时优先保持 last_id 防抖 */
   [[nodiscard]] int SelectNearestArmor(const Eigen::VectorXd& x, double observed_yaw) const;
 };
 

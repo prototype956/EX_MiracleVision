@@ -51,12 +51,17 @@ constexpr int kConvergeCountOutpost = 10;
 // ── 构造函数 ─────────────────────────────────────────────────────────────────
 
 EkfTrackTarget::EkfTrackTarget(const Detection& detection, std::chrono::steady_clock::time_point t,
-                               double radius, int armor_num, const Eigen::VectorXd& P0_diag)
+                               double radius, int armor_num, const Eigen::VectorXd& P0_diag,
+                               const ProcessNoiseParams& process_noise_params)
     : name(detection.number),
       armor_type(detection.type),
       is_init(true),
       armor_num_(armor_num),
-      t_(t) {
+      t_(t),
+      process_noise_pos_(process_noise_params.process_noise_pos),
+      process_noise_ang_(process_noise_params.process_noise_ang),
+      process_noise_outpost_pos_(process_noise_params.process_noise_outpost_pos),
+      process_noise_outpost_ang_(process_noise_params.process_noise_outpost_ang) {
   // 1. 从检测结果取装甲板 3D 位置（世界系）和 yaw
   const double ax = detection.xyz_in_gimbal[0];
   const double ay = detection.xyz_in_gimbal[1];
@@ -104,13 +109,11 @@ void EkfTrackTarget::Predict(double dt) {
 
   // ── 分段白噪声模型 Q（PWNM）──────────────────────────────────────────────
   // v1: 线性加速度方差（m²/s⁴），v2: 角加速度方差（rad²/s⁴）
-  double v1, v2;
+  double v1 = process_noise_pos_;
+  double v2 = process_noise_ang_;
   if (name == ArmorNumber::OUTPOST) {
-    v1 = 10.0;
-    v2 = 0.1;
-  } else {
-    v1 = 100.0;
-    v2 = 400.0;
+    v1 = process_noise_outpost_pos_;
+    v2 = process_noise_outpost_ang_;
   }
 
   const double dt2 = dt * dt;
@@ -152,17 +155,17 @@ void EkfTrackTarget::Predict(double dt) {
 void EkfTrackTarget::Update(const Detection& detection) {
   update_count_++;
 
-  // 1. 观测量 z = [armor_x, armor_y, armor_z]（世界系）
-  const Eigen::Vector3d z = detection.xyz_in_gimbal;
+  // 1. 由检测 3D 点构造 ypd 观测（世界系）
+  const Eigen::Vector3d armor_xyz = detection.xyz_in_gimbal;
+  const double xy_norm = std::hypot(armor_xyz[0], armor_xyz[1]);
+  const double obs_dist = armor_xyz.norm();
+  const double obs_yaw = std::atan2(armor_xyz[1], armor_xyz[0]);
+  const double obs_pitch = std::atan2(armor_xyz[2], std::max(1e-9, xy_norm));
 
-  // 2. 从 z 推算观测角（世界系：从旋转中心指向装甲板的方向 = center→armor → 取反 = armor→center）
-  //    sp 约定：armor = center - r*[cos,sin] ，所以观测角 = atan2(cy-ay, cx-ax)
-  const double obs_yaw = std::atan2(ekf_.x[2] - z[1], ekf_.x[0] - z[0]);
+  // 2. 匹配最近装甲板 ID（按观测装甲板 yaw 选择）
+  const int id = SelectNearestArmor(ekf_.x, detection.yaw_angle);
 
-  // 3. 匹配最近装甲板 ID
-  const int id = SelectNearestArmor(ekf_.x, obs_yaw);
-
-  // 4. 跳变检测
+  // 3. 跳变检测
   if (id != last_id) {
     is_switch_ = true;
     switch_count_++;
@@ -172,20 +175,38 @@ void EkfTrackTarget::Update(const Detection& detection) {
   }
   last_id = id;
 
-  // 5. 观测函数 h: R^11 → R^3
-  auto h = [&](const Eigen::VectorXd& x) -> Eigen::VectorXd { return ArmorXyz(x, id); };
+  // 4. 观测函数 h: R^11 -> [yaw, pitch, dist, armor_yaw]
+  auto h = [&](const Eigen::VectorXd& x) -> Eigen::VectorXd {
+    const Eigen::Vector3d xyz = ArmorXyz(x, id);
+    const double xy = std::hypot(xyz[0], xyz[1]);
+    Eigen::VectorXd ypd_yaw(4);
+    ypd_yaw[0] = std::atan2(xyz[1], xyz[0]);
+    ypd_yaw[1] = std::atan2(xyz[2], std::max(1e-9, xy));
+    ypd_yaw[2] = xyz.norm();
+    ypd_yaw[3] = LimitRad(x[6] + id * 2.0 * M_PI / armor_num_);
+    return ypd_yaw;
+  };
 
-  // 6. 观测噪声矩阵 R（自适应：距离越远噪声越大）
-  const double dist = z.norm();
-  const double sigma = 0.01 * dist + 0.005;  // 简单线性模型 ~cm/m
-  const double var = sigma * sigma;
-  const Eigen::Vector3d R_diag{var, var, var * 4.0};  // z 轴精度略低
-  const Eigen::MatrixXd R = R_diag.asDiagonal();
+  // 5. 观测雅可比 H（4x11，分量顺序：[yaw,pitch,dist,armor_yaw]）
+  const Eigen::MatrixXd H = HJacobian(ekf_.x, id);
 
-  // 7. 调用 EKF Update（xyz 空间无角度循环，直接相减）
-  ekf_.Update(
-      z, HJacobian(ekf_.x, id), R, h,
-      [](const Eigen::VectorXd& a, const Eigen::VectorXd& b) -> Eigen::VectorXd { return a - b; });
+  // 6. 观测量与观测噪声
+  Eigen::VectorXd z(4);
+  z << obs_yaw, obs_pitch, obs_dist, detection.yaw_angle;
+
+  Eigen::Vector4d r_diag;
+  r_diag << 4e-3, 4e-3, 1.0, 9e-2;
+  const Eigen::MatrixXd R = r_diag.asDiagonal();
+
+  // 7. 调用 EKF Update（角度分量用 limit_rad 处理）
+  ekf_.Update(z, H, R, h,
+              [](const Eigen::VectorXd& a, const Eigen::VectorXd& b) -> Eigen::VectorXd {
+                Eigen::VectorXd c = a - b;
+                c[0] = LimitRad(c[0]);
+                c[1] = LimitRad(c[1]);
+                c[3] = LimitRad(c[3]);
+                return c;
+              });
 }
 
 // ── 状态查询 ─────────────────────────────────────────────────────────────────
@@ -248,9 +269,10 @@ Eigen::Vector3d EkfTrackTarget::ArmorXyz(const Eigen::VectorXd& x, int id) const
 }
 
 Eigen::MatrixXd EkfTrackTarget::HJacobian(const Eigen::VectorXd& x, int id) const {
-  // h(x) = [cx - r*cos(α'), cy_state - r*sin(α'), cz_state ± Δh]
-  // 其中 α' = α + id*2π/N，cy_state = x[2]，cz_state = x[4]
-  // ∂h/∂x（3×11）：
+  // h(x) = [yaw, pitch, dist, armor_yaw]
+  // 先求 xyz 对状态的导数，再链式乘 xyz->ypd 的导数，最后补 armor_yaw 行。
+
+  // ── Step 1: d(armor_xyz)/dx（3x11）────────────────────────────────────
   const double angle = LimitRad(x[6] + id * 2.0 * M_PI / armor_num_);
   const bool use_side = (armor_num_ == 4) && (id == 1 || id == 3);
   const double r = use_side ? x[8] + x[9] : x[8];
@@ -258,38 +280,68 @@ Eigen::MatrixXd EkfTrackTarget::HJacobian(const Eigen::VectorXd& x, int id) cons
   const double cos_a = std::cos(angle);
   const double sin_a = std::sin(angle);
 
-  // ∂armor_x/∂α = r*sin(α)，  ∂armor_x/∂r = -cos(α)，  ∂armor_x/∂Δl = -cos(α) if use_side
-  // ∂armor_y/∂α = -r*cos(α)，  ∂armor_y/∂r = -sin(α)，  ∂armor_y/∂Δl = -sin(α) if use_side
-  // ∂armor_z/∂Δh = 1 if use_side else 0
-  // clang-format off
-  Eigen::MatrixXd H = Eigen::MatrixXd::Zero(3, 11);
-  //              cx   dcx  cy   dcy  cz   dcz     α            dα     r           Δl                    Δh
-  H(0, 0)  = 1.0;                                        // ∂ax/∂cx
-  H(0, 6)  =  r * sin_a;                                 // ∂ax/∂α
-  H(0, 8)  = -cos_a;                                     // ∂ax/∂r
-  H(0, 9)  = use_side ? -cos_a : 0.0;                    // ∂ax/∂Δl
+  Eigen::MatrixXd h_xyz = Eigen::MatrixXd::Zero(3, 11);
+  //              cx   dcx  cy   dcy  cz   dcz     α            dα     r           Δl Δh
+  h_xyz(0, 0) = 1.0;                      // ∂ax/∂cx
+  h_xyz(0, 6) = r * sin_a;                // ∂ax/∂α
+  h_xyz(0, 8) = -cos_a;                   // ∂ax/∂r
+  h_xyz(0, 9) = use_side ? -cos_a : 0.0;  // ∂ax/∂Δl
 
-  H(1, 2)  = 1.0;                                        // ∂ay/∂cy
-  H(1, 6)  = -r * cos_a;                                 // ∂ay/∂α
-  H(1, 8)  = -sin_a;                                     // ∂ay/∂r
-  H(1, 9)  = use_side ? -sin_a : 0.0;                    // ∂ay/∂Δl
+  h_xyz(1, 2) = 1.0;                      // ∂ay/∂cy
+  h_xyz(1, 6) = -r * cos_a;               // ∂ay/∂α
+  h_xyz(1, 8) = -sin_a;                   // ∂ay/∂r
+  h_xyz(1, 9) = use_side ? -sin_a : 0.0;  // ∂ay/∂Δl
 
-  H(2, 4)  = 1.0;                                        // ∂az/∂cz
-  H(2, 10) = use_side ? 1.0 : 0.0;                       // ∂az/∂Δh
-  // clang-format on
+  h_xyz(2, 4) = 1.0;                    // ∂az/∂cz
+  h_xyz(2, 10) = use_side ? 1.0 : 0.0;  // ∂az/∂Δh
 
-  return H;
+  // ── Step 2: d(ypd)/d(xyz)（3x3）──────────────────────────────────────
+  const Eigen::Vector3d pred_xyz = ArmorXyz(x, id);
+  const double px = pred_xyz[0];
+  const double py = pred_xyz[1];
+  const double pz = pred_xyz[2];
+  const double r2 = px * px + py * py;
+  const double r_norm = std::sqrt(std::max(1e-12, r2));
+  const double d2 = r2 + pz * pz;
+  const double d_norm = std::sqrt(std::max(1e-12, d2));
+
+  Eigen::Matrix<double, 3, 3> j_xyz_to_ypd = Eigen::Matrix<double, 3, 3>::Zero();
+  // yaw = atan2(y,x)
+  j_xyz_to_ypd(0, 0) = -py / std::max(1e-12, r2);
+  j_xyz_to_ypd(0, 1) = px / std::max(1e-12, r2);
+  // pitch = atan2(z, sqrt(x^2+y^2))
+  j_xyz_to_ypd(1, 0) = -px * pz / std::max(1e-12, r_norm * d2);
+  j_xyz_to_ypd(1, 1) = -py * pz / std::max(1e-12, r_norm * d2);
+  j_xyz_to_ypd(1, 2) = r_norm / std::max(1e-12, d2);
+  // dist = sqrt(x^2+y^2+z^2)
+  j_xyz_to_ypd(2, 0) = px / std::max(1e-12, d_norm);
+  j_xyz_to_ypd(2, 1) = py / std::max(1e-12, d_norm);
+  j_xyz_to_ypd(2, 2) = pz / std::max(1e-12, d_norm);
+
+  // ── Step 3: 链式合成 + armor_yaw 行（4x11）────────────────────────────
+  Eigen::MatrixXd h_ypd_yaw = Eigen::MatrixXd::Zero(4, 11);
+  h_ypd_yaw.block(0, 0, 3, 11) = j_xyz_to_ypd * h_xyz;
+  h_ypd_yaw(3, 6) = 1.0;  // armor_yaw = alpha + id*const
+
+  return h_ypd_yaw;
 }
 
 int EkfTrackTarget::SelectNearestArmor(const Eigen::VectorXd& x, double observed_yaw) const {
   int best_id = 0;
   double min_err = 1e9;
+  constexpr double kTieEps = 1e-9;
 
   for (int i = 0; i < armor_num_; ++i) {
     const double pred_angle = LimitRad(x[6] + i * 2.0 * M_PI / armor_num_);
     const double err = std::abs(LimitRad(observed_yaw - pred_angle));
-    if (err < min_err) {
+    if (err < min_err - kTieEps) {
       min_err = err;
+      best_id = i;
+      continue;
+    }
+
+    // 角误差相等时优先保持上一帧 ID，减少候选切换抖动。
+    if (std::abs(err - min_err) <= kTieEps && i == last_id) {
       best_id = i;
     }
   }

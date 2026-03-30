@@ -5,7 +5,7 @@
  * 【职责】
  *   TrajectorySolver 是 EkfPredictor 的内部弹道计算模块：
  *   1. 从目标 EKF 状态预测"delay_time + fly_time"后的目标位置；
- *   2. 选择最优被击装甲板（距云台当前朝向最近且正对角度合理）；
+ *   2. 按 jumped/角速度分支选择最优被击装甲板，并通过 lock_id 抑制候选抖动；
  *   3. 通过弹道迭代（最多 10 次）收敛飞行时间；
  *   4. 输出云台需要瞄准的 (yaw, pitch) 偏角。
  *
@@ -100,7 +100,8 @@ class TrajectorySolver {
    * @return GimbalControl  tracking=true 时含有效 yaw/pitch；
    *                        tracking=false 表示弹道不可解或无有效装甲板
    *
-   * @note fire 字段由 Voter 负责，此处始终为 false。
+   * @note 不可解路径返回 tracking=false；fire 字段由 Voter 负责，此处始终为 false。
+   * @note current_yaw 参数当前为预留口径，内部调用 ChooseAimPoint 时传入 0.0。
    */
   [[nodiscard]] GimbalControl Solve(const EkfTrackTarget& target,
                                     std::chrono::steady_clock::time_point timestamp,
@@ -112,16 +113,18 @@ class TrajectorySolver {
  private:
   TrajectorySolverParams params_;
   AimPoint debug_aim_point_;
+  mutable int lock_id_{-1};  ///< 双候选防抖锁定 id（-1 表示未锁定）
 
   /**
    * @brief 从目标装甲板列表中选择当前最优瞄准装甲板
    *
    * 选择策略：
-   *   1. 排除侧对（旋转角超过 approaching/leaving 阈值）的装甲板；
-   *   2. 在剩余候选中选择旋转角与云台当前 yaw 最近的装甲板。
+   *   1. target.jumped=false 时直接选择 id=0；
+   *   2. 非小陀螺分支：用 approaching_angle 筛候选，双候选保持 lock_id，单候选解锁；
+   *   3. 小陀螺/前哨站分支：按 approaching/leaving 角度策略选择装甲板。
    *
    * @param target         当前状态（用于 ArmorXyzaList()）
-   * @param current_yaw    云台当前 yaw 偏角（rad）
+   * @param current_yaw    预留参数，当前未接入（实现中忽略）
    */
   [[nodiscard]] AimPoint ChooseAimPoint(const EkfTrackTarget& target, double current_yaw) const;
 };

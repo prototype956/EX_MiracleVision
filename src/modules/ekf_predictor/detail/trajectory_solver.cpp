@@ -146,6 +146,7 @@ GimbalControl TrajectorySolver::Solve(const EkfTrackTarget& target,
     final_aim = AIM_I;
 
     if (std::abs(TRAJ_NEW.fly_time - traj.fly_time) < CONVERGE_S) {
+      traj = TRAJ_NEW;
       break;  // 收敛
     }
 
@@ -170,8 +171,7 @@ GimbalControl TrajectorySolver::Solve(const EkfTrackTarget& target,
 // ── ChooseAimPoint ───────────────────────────────────────────────────────────
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-AimPoint TrajectorySolver::ChooseAimPoint(const EkfTrackTarget& target,
-                                          double current_yaw) const {
+AimPoint TrajectorySolver::ChooseAimPoint(const EkfTrackTarget& target, double current_yaw) const {
   (void)current_yaw;  // 保留参数供未来接入云台实际 yaw
   const std::vector<Eigen::Vector4d> XYZA_LIST = target.ArmorXyzaList();
   if (XYZA_LIST.empty()) {
@@ -206,21 +206,38 @@ AimPoint TrajectorySolver::ChooseAimPoint(const EkfTrackTarget& target,
   // 非小陀螺（角速度 |dα| <= 2 且非前哨站）：选在可射击范围内、delta_angle 绝对值最小的装甲板
   if (std::abs(ekf_x[7]) <= 2.0 && target.name != ArmorNumber::OUTPOST) {
     const double MAX_ANGLE = params_.max_approaching_angle;
-    int best_id = -1;
-    double best_err = 1e9;
+
+    // 先收集可射击候选 id
+    std::vector<int> id_list;
     for (int i = 0; i < ARMOR_COUNT; ++i) {
       if (std::abs(delta_angles[i]) > MAX_ANGLE) {
         continue;
       }
-      if (std::abs(delta_angles[i]) < best_err) {
-        best_err = std::abs(delta_angles[i]);
-        best_id = i;
-      }
+      id_list.push_back(i);
     }
-    if (best_id < 0) {
+
+    if (id_list.empty()) {
       return {false, XYZA_LIST[0]};
     }
-    return {true, XYZA_LIST[best_id]};
+
+    // 双候选锁定模式：防止在两个可击打装甲板之间来回翻转。
+    if (id_list.size() > 1) {
+      int first_candidate_id = id_list[0];
+      int second_candidate_id = id_list[1];
+
+      // 未锁定或锁定 id 已失效时，按角误差更小者进入锁定。
+      if (lock_id_ != first_candidate_id && lock_id_ != second_candidate_id) {
+        lock_id_ = (std::abs(delta_angles[first_candidate_id]) <
+                    std::abs(delta_angles[second_candidate_id]))
+                       ? first_candidate_id
+                       : second_candidate_id;
+      }
+      return {true, XYZA_LIST[lock_id_]};
+    }
+
+    // 只有单候选时退出锁定模式。
+    lock_id_ = -1;
+    return {true, XYZA_LIST[id_list[0]]};
   }
 
   // 小陀螺模式：选择"正在靠近"的装甲板

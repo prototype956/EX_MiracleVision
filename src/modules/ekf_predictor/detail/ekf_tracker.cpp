@@ -149,19 +149,23 @@ bool EkfTracker::SetTarget(const std::vector<Detection>& detections,
 
   // 初始协方差（若参数未配置则使用 sp 默认值）
   Eigen::VectorXd P0_diag(11);
-  if (params_.P0_diag.size() == 11) {
-    P0_diag = params_.P0_diag;
-  } else if (is_balance) {
+  if (is_balance) {
     P0_diag << 1, 64, 1, 64, 1, 64, 0.4, 100, 1, 1, 1;
   } else if (det.number == ArmorNumber::OUTPOST) {
     P0_diag << 1, 64, 1, 64, 1, 81, 0.4, 100, 1e-4, 0, 0;
   } else if (det.number == ArmorNumber::BASE) {
     P0_diag << 1, 64, 1, 64, 1, 64, 0.4, 100, 1e-4, 0, 0;
+  } else if (params_.P0_diag.size() == 11) {
+    // 全局 P0 仅用于普通目标，避免覆盖 outpost/base/balance 分支语义。
+    P0_diag = params_.P0_diag;
   } else {
     P0_diag << 1, 64, 1, 64, 1, 64, 0.4, 100, 1, 1, 1;
   }
 
-  target_ = EkfTrackTarget(det, t, radius, armor_num, P0_diag);
+  target_ = EkfTrackTarget(
+      det, t, radius, armor_num, P0_diag,
+      ProcessNoiseParams{params_.process_noise_pos, params_.process_noise_ang,
+                         params_.process_noise_outpost_pos, params_.process_noise_outpost_ang});
   return true;
 }
 
@@ -175,7 +179,7 @@ bool EkfTracker::UpdateTarget(const std::vector<Detection>& detections,
   // 在 detections 中寻找同 ArmorNumber（且 is_solved）的最优匹配
   const Detection* best = nullptr;
   for (const auto& det : detections) {
-    if (det.number != target_->name)
+    if (det.number != target_->name || det.type != target_->armor_type)
       continue;
     if (!best || det.distance_to_center < best->distance_to_center) {
       best = &det;
