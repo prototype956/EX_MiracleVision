@@ -12,8 +12,9 @@
  *
  * 【实现约定】
  *   - Init() 失败时返回 false，不抛异常；
- *   - Detect() 在无目标时返回空向量，调用方无需 try-catch；
- *   - Detect() 非线程安全——调用方负责在同一线程顺序调用，
+ *   - Detect() 在无目标或输入帧无效的非异常路径下返回空向量；
+ *   - Detect() 在输入帧坐标系下工作，ROI 坐标还原由检测器外部负责；
+ *   - 接口非线程安全——调用方负责在同一线程顺序调用，
  *     或将实例隔离到专属检测线程。
  *
  * 【可扩展点】
@@ -53,7 +54,8 @@ class IDetector {
   /**
    * @brief 初始化检测器（加载模型/读取阈值）
    * @param config  YAML 配置节点，由调用方从 ConfigManager 中取出后传入
-   * @return true 成功，false 失败（日志由实现内部记录）
+   * @return true 成功；false 失败（日志由实现内部记录，不抛异常）
+   * @thread_safety Not thread-safe
    *
    * 约定：Init() 失败后对象处于"未初始化"状态，
    * 可以重新调用 Init()；不可以调用 Detect()。
@@ -62,18 +64,25 @@ class IDetector {
 
   /**
    * @brief 在图像中检测装甲板
-   * @param frame         相机帧（BGR，CV_8UC3）
+   * @param frame         相机帧（BGR，CV_8UC3，可为全图或 ROI 局部图）
    * @param enemy_color   只返回此颜色的装甲板（Unknown 则返回全部）
-   * @return Detection 列表，空表示本帧无目标
+   * @return Detection 列表；无目标或输入帧无效的非异常路径返回空向量
+   * @thread_safety Not thread-safe
    *
    * 返回的 Detection 中：
    *   - points/box/confidence/color/type/number 已填充；
+   *   - points 位于当前输入帧坐标系（input-frame）；
+   *   - points 顺序固定为 BL, BR, TR, TL（顺时针，从左下开始）；
+   *   - ROI 坐标还原由检测器外部模块负责（不在本接口内）；
    *   - is_solved = false，xyz_in_gimbal = {0,0,0}（需 ISolver 填充）。
    */
   [[nodiscard]] virtual std::vector<Detection> Detect(const cv::Mat& frame,
                                                       ArmorColor enemy_color) = 0;
 
-  /** @return 检测器是否已完成初始化 */
+  /**
+   * @return 检测器是否已完成初始化
+   * @thread_safety Not thread-safe
+   */
   [[nodiscard]] virtual bool IsInitialized() const noexcept = 0;
 };
 
