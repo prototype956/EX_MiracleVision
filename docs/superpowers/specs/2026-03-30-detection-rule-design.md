@@ -18,10 +18,10 @@
 - `src/interfaces/i_detector.hpp`
 - `src/interfaces/types.hpp`
 - `src/modules/armor_detector/`
-- `src/test/armor_detector_contract_test.cpp`
+- `src/test/detector/armor_detector_contract_test.cpp`
 - `src/test/CMakeLists.txt`
 - `docs/modules/detector/armor_detector.md`
-- `docs/test/armor_detector_contract_test.md`
+- `docs/test/detector/armor_detector_contract_test.md`
 - `docs/superpowers/specs/2026-03-30-detection-rule-design.md`
 
 排除范围：
@@ -82,7 +82,7 @@
 
 ## 6. 测试矩阵
 
-新增测试文件：`src/test/armor_detector_contract_test.cpp`
+新增测试文件：`src/test/detector/armor_detector_contract_test.cpp`
 
 | 用例 | 覆盖规则 | 目的 |
 | --- | --- | --- |
@@ -151,8 +151,8 @@
 - 变更点：RestoreAndUpdate 使用 frame_size 计算全图中心，统一 distance_to_center 语义。
 
 3. 契约测试
-- 代码：`src/test/armor_detector_contract_test.cpp`、`src/test/CMakeLists.txt`
-- 文档：`docs/test/armor_detector_contract_test.md`
+- 代码：`src/test/detector/armor_detector_contract_test.cpp`、`src/test/CMakeLists.txt`
+- 文档：`docs/test/detector/armor_detector_contract_test.md`
 - 变更点：新增空帧、角点顺序、ROI 恢复、丢失回退四类契约用例与测试目标。
 
 4. 设计规格

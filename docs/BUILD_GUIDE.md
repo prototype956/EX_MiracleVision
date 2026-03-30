@@ -312,8 +312,8 @@ add_subdirectory(my_module)
 #### 3. 添加新的测试程序（test/）
 
 **步骤**：
-1. 创建测试文件: `test/my_test.cpp`
-2. 编辑 `test/CMakeLists.txt`:
+1. 创建测试文件: `src/test/<category>/my_test.cpp`
+2. 编辑 `src/test/CMakeLists.txt`:
 
 ```cmake
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/my_test.cpp")

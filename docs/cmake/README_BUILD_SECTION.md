@@ -124,7 +124,7 @@ EX_MiracleVision/
 ├── devices/               # 设备层（相机、串口）
 ├── utils/                 # 工具库
 ├── configs/               # 配置文件
-├── test/                  # 测试程序
+├── src/test/              # 测试程序
 ├── 3rdparty/             # 第三方库（MindVision, Foxglove）
 ├── cmake/                # CMake 辅助模块
 ├── docs/                 # 项目文档

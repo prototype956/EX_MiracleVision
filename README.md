@@ -164,7 +164,7 @@ EX_MiracleVision/
 │   ├── buff/              # 能量机关参数
 │   ├── camera/            # 相机参数
 │   └── serial/            # 串口配置
-├── test/                  # 测试程序
+├── src/test/              # 测试程序
 ├── docs/                  # 文档
 ├── cmake/                 # CMake 模块
 ├── scripts/               # 工具脚本

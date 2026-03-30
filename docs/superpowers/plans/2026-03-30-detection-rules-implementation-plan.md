@@ -114,8 +114,8 @@ git commit -m "docs(armor_detector): clarify ROI boundary and corner-order contr
 ### Task 4: Add Detector/ROI Contract Tests
 
 **Files:**
-- Create: `src/test/armor_detector_contract_test.cpp`
-- Create: `src/test/roi_manager_contract_test.cpp`
+- Create: `src/test/detector/armor_detector_contract_test.cpp`
+- Create: `src/test/detector/roi_manager_contract_test.cpp`
 - Modify: `src/test/CMakeLists.txt` (or test target registry file)
 
 - [ ] **Step 1: Add failing detector contract tests**
@@ -150,7 +150,7 @@ Expected: all pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/test/armor_detector_contract_test.cpp src/test/roi_manager_contract_test.cpp src/test/CMakeLists.txt
+git add src/test/detector/armor_detector_contract_test.cpp src/test/detector/roi_manager_contract_test.cpp src/test/CMakeLists.txt
 git commit -m "test(detector): add detector and ROI contract tests"
 ```
 

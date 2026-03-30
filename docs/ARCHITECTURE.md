@@ -458,7 +458,7 @@ EX_MiracleVision/
 │   ├── roi/                       # ROI 参数
 │   └── serial/                    # 串口配置
 │
-├── test/                           # 测试程序
+├── src/test/                       # 测试程序
 │   ├── minimum_vision.cpp         # 最小测试程序
 │   ├── foxglove_camera_sdk.cpp    # Foxglove 测试
 │   └── CMakeLists.txt
