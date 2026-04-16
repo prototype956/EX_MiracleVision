@@ -216,6 +216,20 @@ add_executable(mv-minimum-real-vision minimum_real_vision.cpp)
 target_link_libraries(mv-minimum-real-vision PRIVATE mv-core mv-hal-serial)
 target_compile_definitions(mv-minimum-real-vision PRIVATE CONFIG_FILE_PATH="${CONFIG_FILE_PATH}")
 
+# ── SimSerial 串口仿真后端测试 ───────────────────────────────────────────────
+add_executable(mv-sim-serial-test serial/sim_serial_test.cpp)
+
+target_link_libraries(mv-sim-serial-test
+    PRIVATE
+        mv-hal-serial
+)
+
+target_compile_definitions(mv-sim-serial-test PRIVATE
+    CONFIG_FILE_PATH="${CONFIG_FILE_PATH}"
+)
+
+message(STATUS "      + mv-sim-serial-test (sim serial backend behavior)")
+
 # ── 实机联调程序（检测 + 预测 + 决策 + 串口下发）──────────────────────────────
 if(USE_FOXGLOVE_SDK)
     add_executable(mv-real-debug-vision real_debug_vision.cpp)

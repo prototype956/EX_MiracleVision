@@ -27,9 +27,15 @@ camera:
 
 # ── 串口配置 ──────────────────────────────────────────────────────────────────
 serial:
+  backend: "sim"    # uart / sim
   device: "/dev/ttyUSB0"
   baudrate: 115200
   show_info: false
+  # sim 串口模式下使用（与 at_vision_simulator serial bridge 对齐）
+  sim_endpoint: "127.0.0.1:19091"
+  sim_connect_timeout_ms: 300
+  sim_recv_timeout_ms: 100
+  sim_reconnect_interval_ms: 100
 
 # ── 自瞄参数 ──────────────────────────────────────────────────────────────────
 auto_aim:

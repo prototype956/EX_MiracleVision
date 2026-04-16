@@ -14,6 +14,7 @@
 
 add_library(mv-hal-serial STATIC
     uart_serial.cpp
+    sim_serial.cpp
 )
 
 target_include_directories(mv-hal-serial
@@ -28,4 +29,4 @@ target_link_libraries(mv-hal-serial
         yaml-cpp
 )
 
-message(STATUS "    + mv-hal-serial (UartSerial)")
+message(STATUS "    + mv-hal-serial (UartSerial + SimSerial)")

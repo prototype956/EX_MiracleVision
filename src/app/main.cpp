@@ -35,6 +35,7 @@
 #include "hal/camera/mindvision_camera.hpp"
 #include "hal/camera/opencv_camera.hpp"
 #include "hal/camera/sim_camera.hpp"
+#include "hal/serial/sim_serial.hpp"
 #include "hal/serial/uart_serial.hpp"
 #include "modules/armor_detector/basic_armor_detector.hpp"
 #include "modules/pnp_solver/pnp_solver.hpp"
@@ -202,18 +203,38 @@ int main(int argc, char** argv) {
   MV_LOG_INFO("main", "Camera opened successfully");
 
   // ── 6. 创建并打开串口 ────────────────────────────────────────────────────
-  auto serial = std::make_unique<mv::hal::UartSerial>();
+  const std::string SERIAL_BACKEND = cfg.Get<std::string>("serial.backend", "uart");
+  std::unique_ptr<mv::hal::ISerial> serial;
+  if (SERIAL_BACKEND == "sim") {
+    MV_LOG_INFO("main", "Serial backend: SimSerial");
+    serial = std::make_unique<mv::hal::SimSerial>();
+  } else {
+    if (SERIAL_BACKEND != "uart") {
+      MV_LOG_WARN("main", "Unknown serial backend '{}', using uart", SERIAL_BACKEND);
+    }
+    MV_LOG_INFO("main", "Serial backend: UartSerial");
+    serial = std::make_unique<mv::hal::UartSerial>();
+  }
+
   {
     YAML::Node serial_cfg;
     serial_cfg["device"] = cfg.Get<std::string>("serial.device", "/dev/ttyUSB0");
     serial_cfg["baudrate"] = cfg.Get<int>("serial.baudrate", 115200);
+    serial_cfg["endpoint"] = cfg.Get<std::string>("serial.sim_endpoint", "127.0.0.1:19091");
+    serial_cfg["connect_timeout_ms"] = cfg.Get<int>("serial.sim_connect_timeout_ms", 300);
+    serial_cfg["recv_timeout_ms"] = cfg.Get<int>("serial.sim_recv_timeout_ms", 100);
+    serial_cfg["reconnect_interval_ms"] = cfg.Get<int>("serial.sim_reconnect_interval_ms", 100);
 
     if (!serial->Open(serial_cfg)) {
-      MV_LOG_WARN("main", "UartSerial::Open() failed on '{}' — running without serial (debug mode)",
-                  serial_cfg["device"].as<std::string>());
-      // 不退出：无串口时 RmShooter::Send() 会静默失败，SerialNode 会累积 fail_count
+      MV_LOG_WARN("main", "Serial::Open() failed for backend '{}' — running degraded",
+                  SERIAL_BACKEND);
     } else {
-      MV_LOG_INFO("main", "Serial opened on {}", serial_cfg["device"].as<std::string>());
+      if (SERIAL_BACKEND == "sim") {
+        MV_LOG_INFO("main", "Sim serial configured to {}",
+                    serial_cfg["endpoint"].as<std::string>());
+      } else {
+        MV_LOG_INFO("main", "UART serial opened on {}", serial_cfg["device"].as<std::string>());
+      }
     }
   }
 
