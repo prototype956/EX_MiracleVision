@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "../../sp_vision_25"
+		},
+		{
+			"path": "../../at_vision_simulator"
 		}
 	],
 	"settings": {
