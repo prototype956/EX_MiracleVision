@@ -15,6 +15,7 @@
  *
  * 【相机后端选择（vision.yaml camera.backend）】
  *   "mindvision" → MindVisionCamera（工业相机，需要 SDK）
+ *   "sim"        → SimCamera（AT 仿真器 TCP 流）
  *   "opencv"     → OpenCvCamera（USB 摄像头 / 视频文件 / RTSP）
  *   其他值       → 回退到 OpenCvCamera，发出警告
  *
@@ -33,6 +34,7 @@
 #include "fsm/vision_fsm.hpp"
 #include "hal/camera/mindvision_camera.hpp"
 #include "hal/camera/opencv_camera.hpp"
+#include "hal/camera/sim_camera.hpp"
 #include "hal/serial/uart_serial.hpp"
 #include "modules/armor_detector/basic_armor_detector.hpp"
 #include "modules/pnp_solver/pnp_solver.hpp"
@@ -151,6 +153,28 @@ int main(int argc, char** argv) {
         MV_LOG_ERROR("main", "OpenCvCamera fallback also failed — cannot continue");
         return EXIT_FAILURE;
       }
+    }
+  } else if (BACKEND == "sim") {
+    MV_LOG_INFO("main", "Camera backend: SimCamera");
+    camera = std::make_unique<mv::hal::SimCamera>();
+
+    YAML::Node cam_cfg;
+    // 与 at_vision_simulator 的 SimBridge TCP 监听地址保持一致。
+    cam_cfg["endpoint"] = cfg.Get<std::string>("camera.sim_endpoint", "127.0.0.1:19090");
+    // 连接超时：用于首次连入或断线后的重连尝试。
+    cam_cfg["connect_timeout_ms"] = cfg.Get<int>("camera.sim_connect_timeout_ms", 2000);
+    // 收包超时：限制 Grab() 单次等待时长，避免主循环卡死。
+    cam_cfg["recv_timeout_ms"] = cfg.Get<int>("camera.sim_recv_timeout_ms", 500);
+    // 重连间隔：降低断线场景下的重试频率，避免日志与网络抖动。
+    cam_cfg["reconnect_interval_ms"] = cfg.Get<int>("camera.sim_reconnect_interval_ms", 200);
+    // 单包大小上限：防止异常 payload 导致过量内存分配。
+    cam_cfg["max_payload_bytes"] = cfg.Get<int>("camera.sim_max_payload_bytes", 8 * 1024 * 1024);
+
+    if (!camera->Open(cam_cfg)) {
+      // sim 模式是显式用户选择；打开失败时直接退出，避免静默回退到物理相机导致调试对象漂移。
+      MV_LOG_ERROR("main", "SimCamera::Open() failed for endpoint '{}'",
+                   cam_cfg["endpoint"].as<std::string>());
+      return EXIT_FAILURE;
     }
   } else {
     if (BACKEND != "opencv") {

@@ -12,12 +12,18 @@ system:
 
 # ── 相机配置（硬件抽象层使用）────────────────────────────────────────────────
 camera:
-  backend: "mindvision"   # mindvision / opencv / video_file
+  backend: "sim"   # mindvision / opencv / sim
   device_index: 0
   resolution: "1280x800" # 1280x1024 / 1280x800 / 640x480
   exposure: 2500
   # video_file 模式下使用
   video_path: ""
+    # sim 模式下使用
+  sim_endpoint: "127.0.0.1:19090"
+  sim_connect_timeout_ms: 2000
+  sim_recv_timeout_ms: 500
+  sim_reconnect_interval_ms: 200
+  sim_max_payload_bytes: 8388608
 
 # ── 串口配置 ──────────────────────────────────────────────────────────────────
 serial:

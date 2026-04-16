@@ -16,6 +16,7 @@
 add_library(mv-hal-camera STATIC
     opencv_camera.cpp
     mindvision_camera.cpp
+    sim_camera.cpp
 )
 
 target_include_directories(mv-hal-camera
@@ -32,6 +33,7 @@ target_link_libraries(mv-hal-camera
     PRIVATE
         opencv_videoio        # cv::VideoCapture（仅 .cpp 使用，故 PRIVATE）
         opencv_imgproc        # cv::cvarrToMat（仅 .cpp 使用）
+        opencv_imgcodecs      # SimCamera::Grab() 中 JPEG 解码
 )
 
 # MindVision SDK 条件编译
