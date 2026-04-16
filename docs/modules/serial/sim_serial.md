@@ -32,6 +32,23 @@ SimSerial 实现 ISerial 全接口：
 - 断连期间 Send 返回 true，避免 SerialNode 连续失败计数触发 SetError(2)。
 - 连接恢复后自动继续收发，不需要重启主程序。
 
+## AT Serial Bridge 配置口径（联调）
+
+AT 侧 serial bridge（`at_vision_simulator/src/sim_bridge/serial_bridge.rs`）支持环境变量配置：
+
+- `AT_SERIAL_BIND_ADDR`：监听地址，默认 `127.0.0.1:19091`
+- `AT_SERIAL_STATUS_PERIOD_MS`：上行发送周期（ms），默认 `20`
+- `AT_ENEMY_COLOR`：`red` / `blue`（大小写不敏感）
+- `AT_BULLET_SPEED_MPS`：弹速（m/s），默认 `25.0`
+- `AT_SERIAL_CMD_TIMEOUT_MS`：下行命令新鲜度阈值（ms），默认 `100`
+
+敌我色与 EX `src/config/vision.yaml` 的 `auto_aim.enemy_color` 保持同语义：
+
+- `red` -> 协议 color 字节 `0`
+- `blue` -> 协议 color 字节 `1`
+
+非法值回退为 `blue`。
+
 ## 配置键
 
 在 configs/vision.yaml 和 src/config/vision.yaml 的 serial 节点中新增：
@@ -47,3 +64,12 @@ SimSerial 实现 ISerial 全接口：
 - main.cpp 根据 serial.backend 选择 UartSerial 或 SimSerial。
 - Pipeline/SerialNode/RmShooter 不需要分支判断；保持原有调用链。
 - 仿真模式建议组合：camera.backend=sim + serial.backend=sim。
+
+## 联调验收脚本
+
+联调脚本位于 `scripts/sim_serial_e2e.sh`，覆盖：
+
+1. EX 与 AT 启动连通检查
+2. 主动断连触发软降级
+3. 断连后 2 秒内重连恢复收发
+4. 无 ERROR 状态跳转日志
