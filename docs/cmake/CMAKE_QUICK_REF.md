@@ -117,6 +117,15 @@ cmake --build build --target mv-armor-detector-contract-test -j$(nproc)
 # 运行 detection 契约测试
 ./build/src/test/mv-armor-detector-contract-test
 
+# 编译 Foxglove 在线联调测试入口（依赖 USE_FOXGLOVE_SDK=ON）
+cmake --build build --target mv-foxglove-vision-test -j$(nproc)
+
+# 使用 SimCamera 输入运行（端口 8765）
+./build/src/test/mv-foxglove-vision-test sim blue 8765
+
+# 使用 SimCamera 并覆盖 endpoint
+./build/src/test/mv-foxglove-vision-test sim:127.0.0.1:19090 blue 8765
+
 # 安装（如果配置了）
 cmake --install build
 ```
