@@ -43,8 +43,6 @@ auto_aim:
     init_radius_small: 0.27
     init_radius_big: 0.27
     init_radius_outpost: 0.26
-
-    # 分组过程噪声键（Init 优先读取）
     process_noise:
       normal:
         pos: 100.0
@@ -52,20 +50,14 @@ auto_aim:
       outpost:
         pos: 10.0
         ang: 0.1
-    # 平铺兼容键（分组缺失时回退）
     process_noise_pos: 100.0
     process_noise_ang: 400.0
     process_noise_outpost_pos: 10.0
     process_noise_outpost_ang: 0.1
-
     divergence_threshold: 1000000
-
-    # 初始协方差（11 维），优先读 p0_diag.default
     p0_diag:
       default: [1, 1, 1, 1, 1, 1, 1, 1, 0.05, 0.001, 0.001]
-    # 旧键兼容
     P0_diag: [1, 1, 1, 1, 1, 1, 1, 1, 0.05, 0.001, 0.001]
-
     yaw_offset_deg: 0
     pitch_offset_deg: 0
     low_speed_delay_ms: 100

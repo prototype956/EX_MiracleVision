@@ -158,6 +158,7 @@ if(USE_FOXGLOVE_SDK)
     target_link_libraries(mv-foxglove-vision-test
         PRIVATE
             mv-tool-foxglove
+            mv-tool-debug
             mv-mod-armor-detector    # mv-tool-debug 未链入，须显式加
             mv-mod-pnp-solver
             mv-mod-simple-predictor

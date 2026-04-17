@@ -1,6 +1,6 @@
 /**
  * @file foxglove_vision_test.cpp
- * @brief Foxglove 模块端到端测试（视频/相机 → 装甲板识别 → Foxglove 可视化）
+ * @brief Foxglove 模块端到端测试（视频/相机/仿真流 → 装甲板识别 → Foxglove 可视化）
  *
  * 【功能】
  *   验证 FoxgloveSink 所有 Publish* 接口与 TerminalHUD 在真实视觉数据下的行为：
@@ -13,11 +13,13 @@
  *
  * 【用法】
  * @code
- *   mv-foxglove-vision-test [video_or_camera] [red|blue] [port]
+ *   mv-foxglove-vision-test [video_or_camera_or_sim] [red|blue] [port]
  *   mv-foxglove-vision-test                         # 摄像头 0，红方，端口 8765
  *   mv-foxglove-vision-test armor.mp4               # 视频文件
  *   mv-foxglove-vision-test armor.mp4 blue          # 视频文件，识别蓝方
  *   mv-foxglove-vision-test 0 red 9090              # 摄像头，自定义端口
+ *   mv-foxglove-vision-test sim blue 8765           # SimCamera（vision.yaml 中 sim_endpoint）
+ *   mv-foxglove-vision-test sim:127.0.0.1:19090     # SimCamera（命令行覆盖 endpoint）
  * @endcode
  *
  * 【Foxglove Studio 接入】
@@ -35,12 +37,15 @@
 
 #include "core/config.hpp"
 #include "core/logger.hpp"
+#include "hal/camera/i_camera.hpp"
 #include "hal/camera/opencv_camera.hpp"
+#include "hal/camera/sim_camera.hpp"
 #include "interfaces/types.hpp"
 #include "modules/armor_detector/basic_armor_detector.hpp"
 #include "modules/armor_detector/roi_manager.hpp"
 #include "modules/pnp_solver/pnp_solver.hpp"
 #include "modules/simple_predictor/simple_predictor.hpp"
+#include "tool/debug/armor_param_manager.hpp"
 #include "tool/debug/terminal_hud.hpp"
 #include "tool/foxglove/foxglove_sink.hpp"
 
@@ -52,8 +57,11 @@
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
+#include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <Eigen/Dense>
@@ -76,6 +84,8 @@ extern "C" void SigIntHandler(int /*sig*/) {
 struct Args {
   YAML::Node cam_cfg;
   bool is_file_source{false};
+  bool use_sim_camera{false};
+  std::string sim_endpoint_override;
   mv::ArmorColor enemy_color{mv::ArmorColor::RED};
   uint16_t foxglove_port{8765};
 };
@@ -83,17 +93,25 @@ struct Args {
 Args ParseArgs(int argc, char** argv) {
   Args args;
 
-  // 参数 1：视频路径 or 摄像头索引
+  // 参数 1：视频路径 / 摄像头索引 / sim[:host:port]
   if (argc > 1) {
     const std::string src(argv[1]);
-    const bool is_index = !src.empty() && std::all_of(src.begin(), src.end(), [](unsigned char c) {
-      return std::isdigit(c) != 0;
-    });
-    if (is_index) {
-      args.cam_cfg["source"] = std::stoi(src);
+    if (src == "sim") {
+      args.use_sim_camera = true;
+    } else if (src.rfind("sim:", 0) == 0) {
+      args.use_sim_camera = true;
+      args.sim_endpoint_override = src.substr(4);
     } else {
-      args.cam_cfg["source"] = src;
-      args.is_file_source = true;
+      const bool is_index =
+          !src.empty() && std::all_of(src.begin(), src.end(), [](unsigned char c) {
+            return std::isdigit(c) != 0;
+          });
+      if (is_index) {
+        args.cam_cfg["source"] = std::stoi(src);
+      } else {
+        args.cam_cfg["source"] = src;
+        args.is_file_source = true;
+      }
     }
   } else {
     args.cam_cfg["source"] = 0;
@@ -344,13 +362,34 @@ int main(int argc, char** argv) {
       }
     }
 
-    // ── 5. 打开图像源 ─────────────────────────────────────────────────────────
-    mv::hal::OpenCvCamera camera;
-    if (!camera.Open(ARGS.cam_cfg)) {
-      MV_LOG_ERROR("foxglove-test", "无法打开图像源");
-      return EXIT_FAILURE;
+    // ── 5. 打开图像源（OpenCV / SimCamera）──────────────────────────────────
+    std::unique_ptr<mv::hal::ICamera> camera;
+    if (ARGS.use_sim_camera) {
+      camera = std::make_unique<mv::hal::SimCamera>();
+      YAML::Node sim_cfg;
+      sim_cfg["endpoint"] = ARGS.sim_endpoint_override.empty()
+                                ? cfg.Get<std::string>("camera.sim_endpoint", "127.0.0.1:19090")
+                                : ARGS.sim_endpoint_override;
+      sim_cfg["connect_timeout_ms"] = cfg.Get<int>("camera.sim_connect_timeout_ms", 2000);
+      sim_cfg["recv_timeout_ms"] = cfg.Get<int>("camera.sim_recv_timeout_ms", 500);
+      sim_cfg["reconnect_interval_ms"] = cfg.Get<int>("camera.sim_reconnect_interval_ms", 200);
+      sim_cfg["max_payload_bytes"] = cfg.Get<int>("camera.sim_max_payload_bytes", 8 * 1024 * 1024);
+
+      if (!camera->Open(sim_cfg)) {
+        MV_LOG_ERROR("foxglove-test", "无法打开 SimCamera，endpoint={}",
+                     sim_cfg["endpoint"].as<std::string>());
+        return EXIT_FAILURE;
+      }
+      MV_LOG_INFO("foxglove-test", "SimCamera 打开成功，endpoint={}",
+                  sim_cfg["endpoint"].as<std::string>());
+    } else {
+      camera = std::make_unique<mv::hal::OpenCvCamera>();
+      if (!camera->Open(ARGS.cam_cfg)) {
+        MV_LOG_ERROR("foxglove-test", "无法打开 OpenCv 图像源");
+        return EXIT_FAILURE;
+      }
+      MV_LOG_INFO("foxglove-test", "OpenCv 图像源打开成功");
     }
-    MV_LOG_INFO("foxglove-test", "图像源打开成功");
 
     // ── 静态 TF：gimbal → camera（相机安装位置固定，无论是否有外参配置都必须发布）──
     // 默认外参：Y 轴翻转（相机 down+Y → 云台 up+Y），与 PnpSolver 默认值一致
@@ -401,13 +440,19 @@ int main(int argc, char** argv) {
     mv::modules::RoiManager roi_mgr;
     FpsTracker fps_tracker{30};
     std::mutex color_mtx;  ///< 保护 enemy_color 在Foxglove回调与主循环间的并发访问
+    mv::tool::ArmorDetectorParamManager armor_pm(&detector);
 
     // ── Foxglove 参数：enemy_color（支持面板实时切换）───────────────────────
     {
       const std::string init_color = (enemy_color == mv::ArmorColor::BLUE) ? "blue" : "red";
       sink.UpdateParameters({{"enemy_color", init_color}});
     }
+    armor_pm.PushToFoxglove(sink);
+
     sink.SetParameterCallback([&](const std::string& name, const nlohmann::json& /*raw*/) {
+      if (armor_pm.HandleParameter(sink, name)) {
+        return;
+      }
       if (name == "enemy_color") {
         const auto val = sink.GetParameter("enemy_color");
         if (!val.is_null() && val.is_string()) {
@@ -424,6 +469,8 @@ int main(int argc, char** argv) {
                 (enemy_color == mv::ArmorColor::RED) ? "RED" : "BLUE",
                 (enemy_color == ARGS.enemy_color) ? "命令行" : "vision.yaml",
                 loop_video ? "ON" : "OFF");
+    MV_LOG_INFO("foxglove-test", "输入后端: {}",
+          ARGS.use_sim_camera ? "SimCamera" : "OpenCvCamera");
 
     std::cout << "\n[foxglove-test] 提示：\n"
               << "  Foxglove Studio 连接 → ws://localhost:" << ARGS.foxglove_port << "\n"
@@ -446,10 +493,10 @@ int main(int argc, char** argv) {
 
     while (!g_quit.load(std::memory_order_relaxed)) {
       // 采帧
-      if (!camera.Grab(frame) || frame.empty()) {
-        if (loop_video && ARGS.is_file_source) {
-          camera.Close();
-          if (!camera.Open(ARGS.cam_cfg)) {
+      if (!camera->Grab(frame) || frame.empty()) {
+        if (!ARGS.use_sim_camera && loop_video && ARGS.is_file_source) {
+          camera->Close();
+          if (!camera->Open(ARGS.cam_cfg)) {
             MV_LOG_ERROR("foxglove-test", "视频重新打开失败");
             break;
           }
@@ -457,6 +504,13 @@ int main(int argc, char** argv) {
           roi_mgr.Reset();
           continue;
         }
+
+        if (ARGS.use_sim_camera) {
+          // SimCamera 内部支持断线重连；此处短暂退避，避免空转占满 CPU。
+          std::this_thread::sleep_for(std::chrono::milliseconds(2));
+          continue;
+        }
+
         MV_LOG_INFO("foxglove-test", "视频结束或相机断开");
         break;
       }
@@ -543,7 +597,10 @@ int main(int argc, char** argv) {
 
     // ── 8. 清理 ───────────────────────────────────────────────────────────────
     hud.Flush();
-    camera.Close();
+    if (!armor_pm.SaveToFile(OVERRIDE_YAML, std::string(CONFIG_FILE_PATH) + "/vision.yaml")) {
+      MV_LOG_WARN("foxglove-test", "保存 detector 调参覆盖文件失败: {}", OVERRIDE_YAML);
+    }
+    camera->Close();
     sink.Stop();
     MV_LOG_INFO("foxglove-test", "共处理 {} 帧", frame_idx);
     MV_LOG_INFO("foxglove-test", "══════════ mv-foxglove-vision-test 结束 ══════════");
